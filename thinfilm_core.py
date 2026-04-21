@@ -28,10 +28,13 @@ from scipy.optimize import minimize_scalar
 #   "single_angle_0deg_scan"      -> 只用 0deg 曲线做厚度扫描
 #   "objective_heatmap_d_theta2"  -> 画 objective(d, theta2) 热图
 
-RUN_MODE = "fit_csv_compare_pols"
+RUN_MODE = "fit_csv_with_theta2_search"
 
-CSV_FILE_0DEG = Path(r"C:\Users\L2791\OneDrive\Desktop\deg.s\60nm_0deg_s.csv")
-CSV_FILE_2DEG = Path(r"C:\Users\L2791\OneDrive\Desktop\deg.s\60nm_80deg_s.csv")
+PROJECT_DIR = Path(__file__).resolve().parent
+DATA_DIR = PROJECT_DIR / "data"
+
+CSV_FILE_0DEG = DATA_DIR / "deg.s" / "60nm_10deg_s.csv"
+CSV_FILE_2DEG = DATA_DIR / "deg.s" / "60nm_80deg_s.csv"
 
 FIT_Y_SELECTOR_0DEG = "总反射率"
 FIT_Y_SELECTOR_2DEG = "总反射率"
@@ -46,8 +49,8 @@ N1_DISPERSION_C = 0.0
 N2_DISPERSION_B = 0.0
 N2_DISPERSION_C = 0.0
 
-POL = "p"
-THETA1 = 0.0
+POL = "s"
+THETA1 = 10.0
 THETA2 = 80.0
 THETA2_SEARCH_MIN = -1.0
 THETA2_SEARCH_MAX = 1.0
@@ -61,10 +64,10 @@ MIX_USE_ENDPOINT_TARGET_BLEND = True
 MIX_SOURCE_P_WEIGHT = 0.6
 MIX_SOURCE_0DEG_MODE = "s"
 MIX_SOURCE_2DEG_MODE = "blend"
-MIX_SOURCE_CSV_0DEG_S: Optional[Path] = Path(r"C:\Users\L2791\OneDrive\Desktop\deg.s\60nm_0deg_s.csv")
-MIX_SOURCE_CSV_0DEG_P: Optional[Path] = Path(r"C:\Users\L2791\OneDrive\Desktop\deg.p\60nm_0deg_p.csv")
-MIX_SOURCE_CSV_2DEG_S: Optional[Path] = Path(r"C:\Users\L2791\OneDrive\Desktop\deg.s\60nm_80deg_s.csv")
-MIX_SOURCE_CSV_2DEG_P: Optional[Path] = Path(r"C:\Users\L2791\OneDrive\Desktop\deg.p\60nm_80deg_p.csv")
+MIX_SOURCE_CSV_0DEG_S: Optional[Path] = DATA_DIR / "deg.s" / "60nm_10deg_s.csv"
+MIX_SOURCE_CSV_0DEG_P: Optional[Path] = DATA_DIR / "deg.p" / "60nm_10deg_p.csv"
+MIX_SOURCE_CSV_2DEG_S: Optional[Path] = DATA_DIR / "deg.s" / "60nm_80deg_s.csv"
+MIX_SOURCE_CSV_2DEG_P: Optional[Path] = DATA_DIR / "deg.p" / "60nm_80deg_p.csv"
 
 # Generic two-angle aliases for future 10deg/80deg workflows.
 CSV_FILE_ANGLE1 = CSV_FILE_0DEG

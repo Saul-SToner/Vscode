@@ -1,0 +1,53 @@
+"""Diagnostics, error analysis, heatmaps, and batch helpers."""
+
+from __future__ import annotations
+
+from thinfilm_core import (
+    compute_dual_objective_heatmap,
+    compute_error_metrics,
+    compute_error_statistics,
+    compute_single_angle_objective_curve,
+    find_batch_pairs,
+    fit_linear_sensitivity,
+    infer_true_thickness_for_single_sample,
+    optimize_thickness_for_fixed_configuration,
+    parse_true_thickness_nm_from_sample_id,
+    plot_objective_heatmap_d_theta2,
+    plot_single_angle_scan_0deg,
+    run_batch_error_analysis,
+    run_batch_fit_core,
+    run_batch_fit_csv,
+    run_compare_80deg_at_fixed_d,
+    run_fit_csv_compare_pols,
+    run_objective_heatmap_d_theta2,
+    run_single_angle_0deg_scan,
+    run_single_sample_error_analysis,
+    run_theta2_scan_at_fixed_d,
+    save_batch_error_analysis_outputs,
+    save_batch_fit_summary_outputs,
+)
+
+__all__ = [
+    "compute_dual_objective_heatmap",
+    "compute_error_metrics",
+    "compute_error_statistics",
+    "compute_single_angle_objective_curve",
+    "find_batch_pairs",
+    "fit_linear_sensitivity",
+    "infer_true_thickness_for_single_sample",
+    "optimize_thickness_for_fixed_configuration",
+    "parse_true_thickness_nm_from_sample_id",
+    "plot_objective_heatmap_d_theta2",
+    "plot_single_angle_scan_0deg",
+    "run_batch_error_analysis",
+    "run_batch_fit_core",
+    "run_batch_fit_csv",
+    "run_compare_80deg_at_fixed_d",
+    "run_fit_csv_compare_pols",
+    "run_objective_heatmap_d_theta2",
+    "run_single_angle_0deg_scan",
+    "run_single_sample_error_analysis",
+    "run_theta2_scan_at_fixed_d",
+    "save_batch_error_analysis_outputs",
+    "save_batch_fit_summary_outputs",
+]

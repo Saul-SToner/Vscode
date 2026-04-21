@@ -27,6 +27,38 @@ s 偏振
 thinfilm_core.py
 ```
 
+现在也提供了一个轻量函数包，方便 APP 或队友调用：
+
+```text
+thinfilm/
+```
+
+包结构：
+
+```text
+thinfilm/paths.py   数据目录和输出目录
+thinfilm/api.py     主拟合 API
+thinfilm/sweep.py   COMSOL 参数扫描表分析
+```
+
+常用调用：
+
+```python
+from thinfilm import fit_current_main_case, fit_two_angle, summarize_n1b_theta_sweep
+```
+
+当前主线拟合：
+
+```python
+result = fit_current_main_case(save_plots=False)
+```
+
+分析 `data/deg.p/p.csv` 中的 `theta + n1_B + lambda0` 全组合扫描：
+
+```python
+summary = summarize_n1b_theta_sweep()
+```
+
 其他文件主要是早期探索或辅助分析：
 
 ```text
