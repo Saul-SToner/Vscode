@@ -27,6 +27,7 @@ s 偏振
 thinfilm_core.py
 ```
 
+<<<<<<< HEAD
 现在也提供了一个轻量函数包，方便 APP 或队友调用：
 
 ```text
@@ -67,6 +68,8 @@ theta_scan_fit_from_comsol.py
 Untitled-1.py
 ```
 
+=======
+>>>>>>> c8420a9b7d46676347122363596d5f4111cb4e61
 ## 当前推荐主线
 
 推荐配置：
