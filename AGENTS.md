@@ -1,76 +1,59 @@
-# 薄膜反射谱拟合项目协作说明
+# 薄膜光学项目协作说明
 
-## 项目目标
+## 1. 项目定位
 
-本项目用于从 COMSOL 或实验导出的反射率光谱中反演薄膜厚度。
+本项目目前有两条并行主线：
 
-当前方法是**物理模型反演**，不是神经网络：
+1. 反演主线  
+   从 COMSOL 或实验导出的反射率光谱中反推出单层薄膜厚度。
 
-1. 用单层薄膜 Fresnel 反射模型生成理论反射谱。
-2. 输入两个入射角下的反射率曲线。
-3. 联合拟合薄膜厚度 `d`。
-4. 可选地修正第二入射角 `theta2`。
+2. 教学仿真主树  
+   依据设计报告，用 Python 复现平面多层膜系的正向仿真、导出与目录配置。
 
-当前最稳定的工程主线是：
+两条线共享同一个仓库，但目标不同：
+
+- 反演主线强调“由谱线反推参数”
+- 教学主树强调“给定结构正向计算 R / T / A 并组织成可演示平台”
+
+## 2. 当前目录重点
+
+核心文件与目录如下：
+
+```text
+thinfilm_core.py          早期集中式主脚本，仍保留大量反演入口
+thinfilm/                 轻量函数包，推荐新代码从这里接入
+run_teaching_demo.py      教学主树命令行入口
+data/                     输入数据目录
+```
+
+`thinfilm/` 当前重点模块：
+
+```text
+thinfilm/api.py           对外高层 API
+thinfilm/education.py     教学主树：多层膜正向仿真、导出、目录配置
+thinfilm/sweep.py         COMSOL 扫描表分析
+thinfilm/joint.py         多样本联合拟合探索
+thinfilm/paths.py         数据目录与输出目录
+```
+
+## 3. 反演主线说明
+
+### 3.1 物理模型
+
+当前反演不是神经网络，而是物理模型反演：
+
+1. 使用单层薄膜 Fresnel 反射模型
+2. 输入两个入射角下的反射率曲线
+3. 联合搜索厚度 `d`
+4. 可选修正第二角 `theta2`
+
+### 3.2 当前最稳定工程路线
 
 ```text
 10° + 80°
 s 偏振
 双角联合反演厚度
 ```
-
-## 主文件
-
-主要使用：
-
-```text
-thinfilm_core.py
-```
-
-<<<<<<< HEAD
-现在也提供了一个轻量函数包，方便 APP 或队友调用：
-
-```text
-thinfilm/
-```
-
-包结构：
-
-```text
-thinfilm/paths.py   数据目录和输出目录
-thinfilm/api.py     主拟合 API
-thinfilm/sweep.py   COMSOL 参数扫描表分析
-```
-
-常用调用：
-
-```python
-from thinfilm import fit_current_main_case, fit_two_angle, summarize_n1b_theta_sweep
-```
-
-当前主线拟合：
-
-```python
-result = fit_current_main_case(save_plots=False)
-```
-
-分析 `data/deg.p/p.csv` 中的 `theta + n1_B + lambda0` 全组合扫描：
-
-```python
-summary = summarize_n1b_theta_sweep()
-```
-
-其他文件主要是早期探索或辅助分析：
-
-```text
-comsol_only_analysis.py
-theta_scan_fit_from_comsol.py
-Untitled-1.py
-```
-
-=======
->>>>>>> c8420a9b7d46676347122363596d5f4111cb4e61
-## 当前推荐主线
 
 推荐配置：
 
@@ -81,265 +64,193 @@ THETA2 = 80.0
 POL = "s"
 ```
 
-输入文件：
+推荐输入文件：
 
 ```python
 CSV_FILE_ANGLE1 = Path(r"...10deg_s.csv")
 CSV_FILE_ANGLE2 = Path(r"...80deg_s.csv")
 ```
 
-当前 `60 nm` 样品在 `10° + 80°`、`s` 偏振下的验证结果约为：
+### 3.3 反演 API
 
-```text
-d_fit_corrected ≈ 59.97 nm
-theta2_fit      ≈ 80.04°
-best_objective  ≈ 3.02e-02
+常用调用：
+
+```python
+from thinfilm import fit_two_angle, fit_current_main_case
 ```
 
-这说明当前主线已经比较稳定。
+当前主线样例：
 
-## COMSOL 导出建议
+```python
+result = fit_current_main_case(save_plots=False)
+```
 
-工程主线优先导出纯 `s` 偏振反射率：
+## 4. 教学主树说明
+
+### 4.1 目标
+
+教学主树用于复现设计报告中的平面多层膜正向仿真，包括：
+
+1. 单层减反射膜
+2. 双层减反射膜
+3. 三层减反射膜
+4. 高反射膜
+5. 单半波型 F-P 滤光片
+6. 双半波型 F-P 滤光片
+7. 中性分束膜
+
+底层方法为传输矩阵法 / 特征矩阵法，不依赖 COMSOL 即可快速生成 R / T / A 曲线。
+
+### 4.2 命令行入口
+
+使用：
+
+```powershell
+C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_teaching_demo.py --list
+C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_teaching_demo.py --case single_ar
+C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_teaching_demo.py --compare
+C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_teaching_demo.py --catalog
+C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_teaching_demo.py --report
+```
+
+### 4.3 教学主树 API
+
+常用调用：
+
+```python
+from thinfilm import (
+    list_teaching_cases,
+    simulate_teaching_case,
+    export_teaching_case_outputs,
+    export_teaching_comparison_figures,
+    export_teaching_main_branch_catalog,
+    export_teaching_report_bundle,
+)
+```
+
+### 4.4 当前已具备的主树输出
+
+1. 单案例导出
+2. 第 2 章整套案例导出
+3. 多曲线对比图导出
+4. 主树总包导出
+5. 主树目录配置导出
+6. 首页卡片、分区卡片、对比图卡片统一 JSON 结构
+7. 参数面板自动渲染所需表单配置
+
+## 5. 输出位置
+
+所有默认输出写入：
+
+```text
+C:\Users\L2791\thinfilm_outputs
+```
+
+常见输出文件包括：
+
+```text
+teaching_case_*_spectrum.csv
+teaching_case_*_summary.json
+teaching_case_*_summary.txt
+teaching_case_*_RTA.png
+teaching_case_*_main.png
+teaching_compare_*.csv
+teaching_compare_*.png
+teaching_main_branch_catalog.json
+teaching_report_case_index.csv
+teaching_report_bundle_manifest.json
+teaching_report_bundle_manifest.txt
+```
+
+## 6. COMSOL 数据协作约定
+
+### 6.1 反演主线推荐导出
+
+优先导出纯 `s` 偏振：
 
 ```text
 10deg_s.csv
 80deg_s.csv
 ```
 
-如果后续要比较偏振影响，可以额外导出：
+如果要做偏振对照，再额外导出：
 
 ```text
 10deg_p.csv
 80deg_p.csv
 ```
 
-当前不建议直接依赖 COMSOL 的 `mixed` 或 `avg(0.6p)` 导出作为主拟合输入。
+### 6.2 mixed / avg 的处理原则
 
-之前已经观察到：
+当前不建议把 COMSOL 直接导出的 `mixed` 或 `avg(0.6p)` 曲线作为主拟合输入。
 
-```text
-COMSOL 直接导出的 mixed 曲线不等于 eta * R_p + (1 - eta) * R_s
-```
-
-因此如果要做混合偏振，更稳的方式是：
+更稳的方式是：
 
 ```text
-分别导出纯 s 和纯 p 端点，然后在 Python 后处理中线性合成。
+分别导出纯 s 和纯 p 曲线
+在 Python 后处理中按比例线性合成
 ```
 
-混合偏振模型为：
+混合模型：
 
 ```text
 R_mix = eta * R_p + (1 - eta) * R_s
 ```
 
-其中：
+## 7. 协作建议
+
+### 7.1 给前端 / APP 同学
+
+优先对接这些文件或接口：
 
 ```text
-0 <= eta <= 1
+thinfilm/api.py
+thinfilm/education.py
+C:\Users\L2791\thinfilm_outputs\teaching_main_branch_catalog.json
 ```
 
-## 主要运行模式
+目录 JSON 已包含：
 
-在 `thinfilm_core.py` 顶部设置 `RUN_MODE`。
+- 首页卡片
+- 分区结构
+- 对比图结构
+- 参数表单分组
+- 参数控件类型
+- 默认文件路径
 
-常用模式：
+前端不要硬编码案例名、参数名、图路径。
+
+### 7.2 给算法 / 建模同学
+
+若继续反演主线，优先保持：
 
 ```text
-fit_csv_with_theta2_search      单样品双角拟合，并搜索第二角修正
-fit_csv_compare_pols            比较 s / p / avg / mix 模型
-single_sample_error_analysis    单样品误差来源分析
-batch_error_analysis            批量厚度误差分析
-single_angle_0deg_scan          单角厚度扫描，虽然名字含 0deg，但现在已随 THETA1 变化
-objective_heatmap_d_theta2      输出 d-theta2 目标函数热图
+10° + 80°
+s 偏振
+双角反演
 ```
 
-当前主线使用：
+色散、混合偏振、多厚度联合拟合可作为扩展，不要破坏主线可复现性。
 
-```text
-fit_csv_with_theta2_search
-```
+## 8. 当前已知限制
 
-## 关键配置项
+1. 反演主线目前仍以单层膜模型为主
+2. 尚未系统加入粗糙度、过渡层、多层反演
+3. 教学主树是 Python 正向等价实现，不是 COMSOL 数值场分布复刻
+4. 个别旧入口仍保留在 `thinfilm_core.py`
+5. PowerShell 直接查看 JSON 时可能出现中文显示乱码，但文件本身是 UTF-8 正常内容
 
-双角输入：
+## 9. 推荐后续推进顺序
 
-```python
-CSV_FILE_ANGLE1 = Path(...)
-CSV_FILE_ANGLE2 = Path(...)
-THETA1 = 10.0
-THETA2 = 80.0
-```
+### 反演侧
 
-偏振设置：
+1. 固定 `10° + 80° + s`
+2. 做多厚度验证表
+3. 再做小范围色散参数扫描
 
-```python
-POL = "s"      # 当前推荐主线
-POL = "p"      # p 偏振对照
-POL = "avg"    # 固定 50% s + 50% p
-POL = "mix"    # eta * p + (1 - eta) * s
-```
+### 教学主树侧
 
-混合偏振端点合成：
-
-```python
-MIX_USE_ENDPOINT_TARGET_BLEND = True
-MIX_SOURCE_P_WEIGHT = 0.6
-MIX_SOURCE_ANGLE1_MODE = "blend"
-MIX_SOURCE_ANGLE2_MODE = "blend"
-```
-
-端点文件：
-
-```python
-MIX_SOURCE_CSV_ANGLE1_S = Path(...)
-MIX_SOURCE_CSV_ANGLE1_P = Path(...)
-MIX_SOURCE_CSV_ANGLE2_S = Path(...)
-MIX_SOURCE_CSV_ANGLE2_P = Path(...)
-```
-
-## 色散模型
-
-代码支持可选 Cauchy 色散模型：
-
-```text
-n(lambda) = A + B / lambda_um^2 + C / lambda_um^4
-```
-
-开关：
-
-```python
-USE_DISPERSION = True
-```
-
-参数：
-
-```python
-N1 = 1.38
-N1_DISPERSION_B = ...
-N1_DISPERSION_C = ...
-
-N2 = 1.52
-N2_DISPERSION_B = ...
-N2_DISPERSION_C = ...
-```
-
-在 COMSOL 中，建议先定义无量纲波长：
-
-```text
-lambda_um = lambda0/1[um]
-```
-
-然后材料折射率写成：
-
-```text
-n1 = n1_A + n1_B/(lambda_um^2) + n1_C/(lambda_um^4)
-```
-
-不要直接使用无单位的 `lambda0`。
-
-当前观察：
-
-```text
-n1_B = 0.005 这组色散参数在 60 nm、10° + 80°、s 偏振数据上没有改善拟合，反而使 objective 变大。
-```
-
-这不代表色散模型错误，只说明这组色散参数不适合当前数据。
-
-后续如果寻找色散参数，建议先小范围扫描：
-
-```text
-n1_A: 1.36 ~ 1.40
-n1_B: 0 ~ 0.005
-n1_C: 0
-n2 暂时固定
-```
-
-不要只用一个厚度点确定色散参数，至少应使用多个厚度点共同判断。
-
-## 输出目录
-
-所有结果默认输出到：
-
-```text
-C:\Users\L2791\thinfilm_outputs
-```
-
-常见输出包括：
-
-```text
-fit_csv_with_theta2_search_summary.txt
-fit_csv_with_theta2_search_summary.json
-fit_csv_with_theta2_search_result.csv
-拟合曲线图
-残差图
-目标函数热图
-```
-
-## APP / 可视化封装建议
-
-当前代码已经可以交给队友做 APP 原型。
-
-APP 不要写死样品、角度或偏振，应该做成参数驱动。
-
-建议输入：
-
-```text
-csv_angle1
-csv_angle2
-theta1
-theta2
-pol
-n0
-n1
-n2
-use_dispersion
-n1_dispersion_b
-n1_dispersion_c
-n2_dispersion_b
-n2_dispersion_c
-```
-
-建议输出：
-
-```text
-d_fit_corrected_nm
-theta2_fit_deg
-best_objective
-拟合曲线
-残差曲线
-输入文件信息
-模型参数信息
-```
-
-服务器需求不高：
-
-```text
-原型：4 核 CPU，8 GB 内存
-多人使用：8 核 CPU，16 GB 内存
-GPU：不需要
-```
-
-这是 CPU 数值计算，不是神经网络推理。
-
-## 当前已知限制
-
-1. 当前模型是单层薄膜模型。
-2. 尚未加入粗糙度、过渡层、多层膜。
-3. COMSOL 直接导出的 mixed / avg 曲线目前不可靠。
-4. 色散支持已经接入，但材料参数还需要系统寻找。
-5. 部分旧函数名仍带有 `0deg`，但新配置已经改为 `ANGLE1 / ANGLE2` 别名。
-
-## 推荐后续推进顺序
-
-1. 固定主线：`10° + 80°`，`s` 偏振。
-2. 用 `60 / 70 / 80 / 100 / 120 nm` 做多厚度验证表。
-3. 记录每组：
-   - `d_fit_corrected`
-   - 厚度误差
-   - `theta2_fit`
-   - `best_objective`
-4. 主线稳定后，再小范围扫描 `n1_A / n1_B`。
-5. mixed 偏振作为诊断支线，不作为当前生产主线。
-6. APP 可以并行开发，但必须保持参数驱动，不要硬编码当前样品。
+1. 保持目录 JSON 结构稳定
+2. 让前端先接首页、案例页、对比页
+3. 再补统一结果摘要结构
+4. 最后再考虑 GUI / Web 原型
