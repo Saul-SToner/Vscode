@@ -23,7 +23,9 @@ from typing import List, Optional, Union
 RUN_MODE = "fit_csv_with_theta2_search"
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = PROJECT_DIR / "data"
+ARCHIVE_DIR = PROJECT_DIR / "archive"
+INVERSION_DATA_DIR = ARCHIVE_DIR / "inversion_examples"
+DATA_DIR = INVERSION_DATA_DIR
 
 CSV_FILE_0DEG = DATA_DIR / "deg.s" / "60nm_10deg_s.csv"
 CSV_FILE_2DEG = DATA_DIR / "deg.s" / "60nm_80deg_s.csv"

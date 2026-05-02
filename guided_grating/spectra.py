@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import numpy as np
 
@@ -31,4 +31,50 @@ def summarize_guided_grating_spectrum(result: Dict[str, Any]) -> Dict[str, Any]:
         "num_points": int(wl.size),
         "backend": result.get("backend"),
         "is_placeholder": bool(result.get("is_placeholder", False)),
+    }
+
+
+def summarize_lambda_period_sweep(
+    bundle: Dict[str, Any],
+    target_wavelength_nm: float = 1550.0,
+) -> Dict[str, Any]:
+    period_summaries: List[Dict[str, Any]] = []
+    groups = bundle.get("sweep_groups") or bundle.get("period_groups", {})
+    sweep_name = str(bundle.get("sweep_name") or "period")
+    sweep_name_nm = f"{sweep_name}_nm"
+
+    for period_key, result in groups.items():
+        spec = result.get("spec", {})
+        period_nm = float(spec.get(sweep_name_nm, float(period_key)))
+        summary = summarize_guided_grating_spectrum(result)
+        row = {
+            "period_key": str(period_key),
+            "period_nm": period_nm,
+            "sweep_name": sweep_name,
+            **summary,
+            "target_error_nm": abs(
+                float(summary["peak_wavelength_nm"]) - float(target_wavelength_nm)
+            ),
+        }
+        period_summaries.append(row)
+
+    period_summaries.sort(
+        key=lambda row: (
+            float(row["target_error_nm"]),
+            -float(row["peak_reflectance"]),
+            float(row["fwhm_nm"]),
+        )
+    )
+    best = period_summaries[0] if period_summaries else {}
+
+    return {
+        "sample_id": bundle.get("sample_id", ""),
+        "source_csv": bundle.get("source_csv", ""),
+        "backend": bundle.get("backend"),
+        "has_duplicate_block": bool(bundle.get("has_duplicate_block", False)),
+        "sweep_name": sweep_name,
+        "target_wavelength_nm": float(target_wavelength_nm),
+        "num_periods": len(period_summaries),
+        "best_candidate": best,
+        "period_summaries": period_summaries,
     }

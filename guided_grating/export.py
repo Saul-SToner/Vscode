@@ -111,3 +111,75 @@ def export_guided_grating_result(
         saved["main_png"] = str(main_png)
 
     return saved
+
+
+def export_guided_grating_sweep_summary(
+    bundle_summary: Dict[str, Any],
+    prefix: str = "guided_grating_sweep",
+    save_csv: bool = True,
+    save_json: bool = True,
+    save_txt: bool = True,
+) -> Dict[str, str]:
+    saved: Dict[str, str] = {}
+    stem = f"{prefix}_{bundle_summary.get('sample_id', 'bundle')}"
+    period_rows = list(bundle_summary.get("period_summaries", []))
+    best = bundle_summary.get("best_candidate", {})
+    sweep_name = str(bundle_summary.get("sweep_name", "period"))
+    sweep_col = f"{sweep_name}_nm"
+
+    if save_csv:
+        csv_path = output_file(f"{stem}_period_summary.csv")
+        with open(csv_path, "w", encoding="utf-8-sig") as f:
+            f.write(
+                f"{sweep_col},peak_wavelength_nm,peak_reflectance,fwhm_nm,"
+                "target_wavelength_nm,target_error_nm,min_reflectance,max_transmittance\n"
+            )
+            for row in period_rows:
+                f.write(
+                    ",".join(
+                        [
+                            f"{float(row['period_nm']):.12g}",
+                            f"{float(row['peak_wavelength_nm']):.12g}",
+                            f"{float(row['peak_reflectance']):.12g}",
+                            f"{float(row['fwhm_nm']):.12g}",
+                            f"{float(bundle_summary['target_wavelength_nm']):.12g}",
+                            f"{float(row['target_error_nm']):.12g}",
+                            f"{float(row['min_reflectance']):.12g}",
+                            f"{float(row['max_transmittance']):.12g}",
+                        ]
+                    )
+                    + "\n"
+                )
+        saved["csv"] = str(csv_path)
+
+    if save_json:
+        json_path = output_file(f"{stem}_summary.json")
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(bundle_summary, f, ensure_ascii=False, indent=2)
+        saved["json"] = str(json_path)
+
+    if save_txt:
+        txt_path = output_file(f"{stem}_summary.txt")
+        lines = [
+            "Guided Grating Lambda-Period Sweep Summary",
+            "=" * 80,
+            f"sample_id              = {bundle_summary.get('sample_id', '')}",
+            f"source_csv             = {bundle_summary.get('source_csv', '')}",
+            f"sweep_name             = {sweep_name}",
+            f"target_wavelength_nm   = {bundle_summary.get('target_wavelength_nm', 0.0):.6f}",
+            f"num_periods            = {bundle_summary.get('num_periods', 0)}",
+            f"has_duplicate_block    = {bundle_summary.get('has_duplicate_block', False)}",
+            "",
+            "Best candidate",
+            "-" * 80,
+            f"{sweep_col:<22} = {float(best.get('period_nm', 0.0)):.6f}",
+            f"peak_wavelength_nm     = {float(best.get('peak_wavelength_nm', 0.0)):.6f}",
+            f"peak_reflectance       = {float(best.get('peak_reflectance', 0.0)):.6f}",
+            f"fwhm_nm                = {float(best.get('fwhm_nm', 0.0)):.6f}",
+            f"target_error_nm        = {float(best.get('target_error_nm', 0.0)):.6f}",
+        ]
+        with open(txt_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        saved["txt"] = str(txt_path)
+
+    return saved

@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Dict
 
-from .export import export_guided_grating_result
+from .comsol_io import (
+    load_comsol_grating_csv,
+    load_comsol_lambda_period_sweep,
+    load_comsol_two_param_sweep,
+)
+from .export import export_guided_grating_result, export_guided_grating_sweep_summary
 from .models import GuidedGratingSpec, GratingSweepConfig
 from .solver import simulate_guided_grating_placeholder
-from .spectra import summarize_guided_grating_spectrum
+from .spectra import summarize_guided_grating_spectrum, summarize_lambda_period_sweep
 
 
 def build_minimal_demo_spec() -> GuidedGratingSpec:
@@ -43,4 +49,78 @@ def run_minimal_demo(prefix: str = "guided_grating_demo") -> Dict[str, Any]:
         "summary": summary,
         "files": files,
         "warning": result.get("warning"),
+    }
+
+
+def run_comsol_csv_demo(
+    csv_path: Path | str,
+    prefix: str = "guided_grating_comsol",
+) -> Dict[str, Any]:
+    result = load_comsol_grating_csv(csv_path)
+    summary = summarize_guided_grating_spectrum(result)
+    files = export_guided_grating_result(result, prefix=prefix)
+    return {
+        "spec": result.get("spec", {}),
+        "summary": summary,
+        "files": files,
+        "warning": result.get("warning"),
+        "source_csv": result.get("source_csv"),
+        "meta": result.get("meta", {}),
+    }
+
+
+def run_comsol_lambda_period_sweep_demo(
+    csv_path: Path | str,
+    prefix: str = "guided_grating_sweep",
+    target_wavelength_nm: float = 1550.0,
+) -> Dict[str, Any]:
+    bundle = load_comsol_lambda_period_sweep(csv_path)
+    return run_comsol_two_param_sweep_bundle(
+        bundle=bundle,
+        prefix=prefix,
+        target_wavelength_nm=target_wavelength_nm,
+    )
+
+
+def run_comsol_two_param_sweep_demo(
+    csv_path: Path | str,
+    prefix: str = "guided_grating_sweep",
+    target_wavelength_nm: float = 1550.0,
+    sweep_name: str | None = None,
+) -> Dict[str, Any]:
+    bundle = load_comsol_two_param_sweep(csv_path, sweep_name=sweep_name)
+    return run_comsol_two_param_sweep_bundle(
+        bundle=bundle,
+        prefix=prefix,
+        target_wavelength_nm=target_wavelength_nm,
+    )
+
+
+def run_comsol_two_param_sweep_bundle(
+    bundle: Dict[str, Any],
+    prefix: str,
+    target_wavelength_nm: float,
+) -> Dict[str, Any]:
+    bundle_summary = summarize_lambda_period_sweep(
+        bundle,
+        target_wavelength_nm=target_wavelength_nm,
+    )
+    summary_files = export_guided_grating_sweep_summary(bundle_summary, prefix=prefix)
+
+    best_period_key = str(bundle_summary["best_candidate"]["period_key"])
+    best_result = (bundle.get("sweep_groups") or bundle.get("period_groups"))[best_period_key]
+    best_files = export_guided_grating_result(
+        best_result,
+        prefix=f"{prefix}_best",
+    )
+    files = {
+        **{f"bundle_{key}": value for key, value in summary_files.items()},
+        **{f"best_{key}": value for key, value in best_files.items()},
+    }
+
+    return {
+        "summary": bundle_summary,
+        "best_result": best_result.get("spec", {}),
+        "files": files,
+        "source_csv": bundle.get("source_csv"),
     }

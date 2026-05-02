@@ -1,45 +1,50 @@
 # 薄膜光学 Python 平台
 
-本项目用于两类任务：
+本仓库用于支撑三条相关但目标不同的工作线：
 
-1. 薄膜反射谱反演  
-   从 COMSOL 或实验导出的反射率曲线中反推出单层薄膜厚度。
+1. 反演主线  
+   从 COMSOL 或实验导出的反射率光谱中，反推出单层薄膜厚度与部分相关参数。
 
-2. 教学型正向仿真  
-   用 Python 复现设计报告中的多层膜系案例，输出反射率、透射率、吸收率及图表。
-
-另外，仓库中已经开始搭建一个独立支线：
+2. 教学仿真主树  
+   依据设计报告，用 Python 复现平面多层膜的正向仿真、结果导出与前端目录配置。
 
 3. 光栅波导研究支线  
-   用于承接“异构薄膜 -> 周期光栅 -> 波导共振 -> 窄线宽反射镜设计”的后续研究。
+   从异构薄膜出发，延伸到周期光栅、波导共振与窄线宽反射镜设计。
 
-## 当前状态
+---
 
-目前项目已经形成两条主线：
+## 1. 当前约定
 
-- 反演主线：`10° + 80° + s 偏振` 双角厚度反演
-- 教学主树：第 2 章 7 个案例的正向仿真、导出和目录配置
-
-当前对外教学平台建议采用：
+当前仓库的对外展示边界如下：
 
 ```text
-只展示教学主树
-不展示厚度反演入口
-反演代码继续保留在仓库中用于研究
+教学平台只展示教学主树
+不暴露厚度反演入口
+反演代码继续保留在仓库中
 ```
 
-## 项目结构
+也就是说：
+
+- 教学平台面向“正向仿真与演示”
+- 厚度反演保留给研究模式、内部工具和后续扩展
+
+---
+
+## 2. 目录结构
+
+核心目录与文件：
 
 ```text
-thinfilm_core.py          早期集中式反演脚本
-thinfilm/                 推荐使用的轻量函数包
-guided_grating/           光栅波导支线骨架
-run_teaching_demo.py      教学主树演示脚本
-run_guided_grating_demo.py 光栅波导支线最小示例
-data/                     数据目录
+thinfilm_core.py             早期集中式脚本，保留大量反演入口
+thinfilm/                    当前推荐使用的轻量函数包
+guided_grating/              光栅波导研究支线
+run_teaching_demo.py         教学主树命令行入口
+run_guided_grating_demo.py   光栅波导支线命令行入口
+archive/inversion_examples/  归档后的反演样本目录
+data/                        主路径说明目录，不再存放反演样本
 ```
 
-`thinfilm/` 中常用模块：
+`thinfilm/` 当前重点模块：
 
 ```text
 thinfilm/api.py
@@ -49,45 +54,13 @@ thinfilm/joint.py
 thinfilm/paths.py
 ```
 
-## 快速开始
+---
 
-### 1. 列出教学案例
+## 3. 教学主树
 
-```powershell
-C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_teaching_demo.py --list
-```
+### 3.1 目标
 
-### 2. 导出单个教学案例
-
-```powershell
-C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_teaching_demo.py --case single_ar
-```
-
-### 3. 导出对比图
-
-```powershell
-C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_teaching_demo.py --compare
-```
-
-### 4. 导出主树目录配置
-
-```powershell
-C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_teaching_demo.py --catalog
-```
-
-### 5. 导出主树完整报告包
-
-```powershell
-C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_teaching_demo.py --report
-```
-
-### 6. 运行光栅波导支线最小示例
-
-```powershell
-C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_guided_grating_demo.py
-```
-
-## 教学主树覆盖案例
+教学主树用于复现设计报告中的平面多层膜正向仿真，当前覆盖：
 
 1. 单层减反射膜
 2. 双层减反射膜
@@ -97,17 +70,41 @@ C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_guided_g
 6. 双半波型 F-P 滤光片
 7. 中性分束膜
 
-## 常用 Python API
+底层方法为传输矩阵法 / 特征矩阵法，不依赖 COMSOL 即可快速生成 `R / T / A` 曲线。
 
-### 反演主线
+### 3.2 命令行入口
 
-```python
-from thinfilm import fit_two_angle, fit_current_main_case
+列出教学案例：
 
-result = fit_current_main_case(save_plots=False)
+```powershell
+C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_teaching_demo.py --list
 ```
 
-### 教学主树
+导出单个案例：
+
+```powershell
+C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_teaching_demo.py --case single_ar
+```
+
+导出对比图：
+
+```powershell
+C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_teaching_demo.py --compare
+```
+
+导出目录配置：
+
+```powershell
+C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_teaching_demo.py --catalog
+```
+
+导出完整报告包：
+
+```powershell
+C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_teaching_demo.py --report
+```
+
+### 3.3 常用 API
 
 ```python
 from thinfilm import (
@@ -120,90 +117,316 @@ from thinfilm import (
 )
 ```
 
-### 光栅波导支线
+### 3.4 当前已具备的输出
 
-```python
-from guided_grating import build_minimal_demo_spec, run_minimal_demo
+1. 单案例导出
+2. 第 2 章整套案例导出
+3. 多曲线对比图导出
+4. 主树总包导出
+5. 主树目录配置导出
+6. 首页卡片、分区卡片、对比图卡片统一 JSON 结构
+7. 参数面板自动渲染所需表单配置
 
-result = run_minimal_demo()
-```
+### 3.5 前端对接约定
 
-## 主要输出
-
-所有默认输出写到：
-
-```text
-C:\Users\L2791\thinfilm_outputs
-```
-
-重要文件：
+优先对接：
 
 ```text
-teaching_main_branch_catalog.json
-teaching_report_case_index.csv
-teaching_report_bundle_manifest.json
-teaching_report_bundle_manifest.txt
-teaching_case_*_main.png
-teaching_compare_*.png
+thinfilm/api.py
+thinfilm/education.py
+C:\Users\L2791\thinfilm_outputs\teaching_main_branch_catalog.json
 ```
 
-## 目录配置说明
+`teaching_main_branch_catalog.json` 当前已包含：
 
-`teaching_main_branch_catalog.json` 当前已经包含：
+- `home_cards`
+- `home_summary`
+- `sections`
+- `comparisons`
+- `comparison_groups`
+- `case_controls`
+- `case_form_groups`
+- `form_ui_meta`
+- `default_files`
+- `platform_scope`
 
-- 首页卡片 `home_cards`
-- 首页摘要 `home_summary`
-- 分区结构 `sections`
-- 对比图结构 `comparisons`
-- 对比图分组 `comparison_groups`
-- 参数控件定义 `case_controls`
-- 参数表单分组 `case_form_groups`
-- 表单渲染提示 `form_ui_meta`
-
-另外还包含：
-
-- 平台显示范围 `platform_scope`
-
-其中当前约定为：
+其中平台边界已写入：
 
 ```text
 show_thickness_inversion = false
 ```
 
-即教学平台不暴露厚度反演入口。
+前端不要硬编码案例名、参数名、图路径。
 
-这份 JSON 可以直接提供给前端或 APP 原型使用。
+---
 
-## 反演主线说明
+## 4. 反演主线
 
-当前最稳定路线是：
+### 4.1 物理模型
+
+当前反演不是神经网络，而是物理模型反演：
+
+1. 使用单层薄膜 Fresnel 反射模型
+2. 输入两个入射角下的反射率曲线
+3. 联合搜索厚度 `d`
+4. 可选修正第二角 `theta2`
+
+### 4.2 当前最稳定工程路线
 
 ```text
 10° + 80°
 s 偏振
-双角联合厚度反演
+双角联合反演厚度
+```
+
+推荐配置：
+
+```python
+RUN_MODE = "fit_csv_with_theta2_search"
+THETA1 = 10.0
+THETA2 = 80.0
+POL = "s"
 ```
 
 推荐输入：
+
+```python
+CSV_FILE_ANGLE1 = Path(r"...10deg_s.csv")
+CSV_FILE_ANGLE2 = Path(r"...80deg_s.csv")
+```
+
+### 4.3 常用 API
+
+```python
+from thinfilm import fit_two_angle, fit_current_main_case
+
+result = fit_current_main_case(save_plots=False)
+```
+
+### 4.4 COMSOL 数据建议
+
+优先导出纯 `s` 偏振：
 
 ```text
 10deg_s.csv
 80deg_s.csv
 ```
 
-这一部分当前建议保留在“研究模式”或内部工具中，不放进教学平台首页入口。
+若做偏振对照，再额外导出：
 
-## 注意事项
+```text
+10deg_p.csv
+80deg_p.csv
+```
 
-1. 当前反演主线主要针对单层膜
-2. `mixed / avg` 不建议直接作为主拟合输入
-3. JSON 文件是 UTF-8，若 PowerShell 显示中文乱码，通常是终端编码问题，不是文件损坏
-4. 教学主树是 Python 正向实现，适合教学平台和前端演示，不等于 COMSOL 场分布逐点复刻
-5. `guided_grating/` 当前求解器仍是明确标注的占位共振模型，只用于支线工程骨架和导出链路验证
+当前不建议把 COMSOL 直接导出的 `mixed` 或 `avg(0.6p)` 作为主拟合输入。更稳的方式是：
 
-## 后续建议
+```text
+分别导出纯 s 和纯 p
+在 Python 后处理中按比例线性合成
+```
 
-1. 前端优先对接 `teaching_main_branch_catalog.json`
-2. 保持主树目录结构稳定
-3. 继续补统一结果摘要结构
-4. 再进入 GUI / Web 原型阶段
+混合模型：
+
+```text
+R_mix = eta * R_p + (1 - eta) * R_s
+```
+
+---
+
+## 5. 光栅波导支线
+
+### 5.1 路线定位
+
+该支线用于承接：
+
+```text
+异构薄膜
+-> 周期光栅
+-> 波导共振
+-> 窄线宽反射镜设计
+```
+
+当前状态：
+
+1. 已建立独立包结构
+2. 已定义最小参数模型
+3. 已接入谱线摘要与导出
+4. 已提供 `run_guided_grating_demo.py`
+5. 已支持 COMSOL 单谱和联合扫描表读取
+
+### 5.2 入口脚本
+
+运行最小占位示例：
+
+```powershell
+C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_guided_grating_demo.py
+```
+
+读取 COMSOL 单条光谱：
+
+```powershell
+C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_guided_grating_demo.py --csv "C:\path\to\Grant.csv"
+```
+
+读取 `lambda + period` 联合扫描：
+
+```powershell
+C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_guided_grating_demo.py --sweep-csv "C:\path\to\2d.csv" --target-wavelength 1550
+```
+
+读取 `lambda + t_wg` 联合扫描：
+
+```powershell
+C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_guided_grating_demo.py --sweep-csv "C:\path\to\5new.csv" --sweep-name t_wg --target-wavelength 1550
+```
+
+### 5.3 当前分析能力
+
+当前联合扫描模式会自动：
+
+1. 按第二参数分组
+2. 提取各组峰位、峰值反射率、FWHM
+3. 按目标波长误差排序
+4. 给出最佳候选参数
+5. 同时导出整张扫描表摘要和最佳曲线
+
+### 5.4 当前阶段性结论
+
+截至当前，支线已经验证到：
+
+- `period` 是强主控参数
+- 已可把窄带高反峰调到 `1550 nm` 附近
+- `period = 980.0 nm` 时已有接近目标波长的设计点
+
+但这条支线仍有提升空间，例如：
+
+- 峰位进一步精确锁定
+- `t_wg / fill_factor / t_grating` 的系统影响
+- 吸收和损耗影响
+- 模态机理解释
+
+---
+
+## 6. 输出目录
+
+所有默认输出写入：
+
+```text
+C:\Users\L2791\thinfilm_outputs
+```
+
+常见输出包括：
+
+```text
+teaching_case_*_spectrum.csv
+teaching_case_*_summary.json
+teaching_case_*_summary.txt
+teaching_case_*_RTA.png
+teaching_case_*_main.png
+teaching_compare_*.csv
+teaching_compare_*.png
+teaching_main_branch_catalog.json
+teaching_report_case_index.csv
+teaching_report_bundle_manifest.json
+teaching_report_bundle_manifest.txt
+guided_grating_*_summary.json
+guided_grating_*_summary.txt
+guided_grating_*_main.png
+guided_grating_*_period_summary.csv
+```
+
+---
+
+## 7. 协作说明
+
+这一部分同时替代原来的 `AGENTS` 核心内容，后续请以本文件为准。
+
+### 7.1 给前端 / APP 同学
+
+优先接教学主树，不接厚度反演入口。
+
+推荐使用：
+
+```text
+thinfilm/api.py
+C:\Users\L2791\thinfilm_outputs\teaching_main_branch_catalog.json
+```
+
+### 7.2 给算法 / 建模同学
+
+若继续反演主线，优先保持：
+
+```text
+10° + 80°
+s 偏振
+双角反演
+```
+
+色散、混合偏振、多厚度联合拟合可以作为扩展，但不要破坏主线可复现性。
+
+### 7.3 给支线研究同学
+
+当前建议的推进顺序：
+
+1. 先锁 `period`
+2. 再看 `t_wg`
+3. 再看 `fill_factor`
+4. 最后补吸收影响
+
+---
+
+## 8. 已知限制
+
+1. 反演主线目前仍以单层膜模型为主
+2. 尚未系统加入粗糙度、过渡层、多层反演
+3. 教学主树是 Python 正向等价实现，不是 COMSOL 场分布逐点复刻
+4. `thinfilm_core.py` 中仍保留部分旧入口
+5. PowerShell 直接查看中文 JSON 或 Markdown 时，若乱码通常是终端编码问题，不是文件损坏
+6. `guided_grating/solver.py` 当前仍保留占位求解器，仅用于工程骨架，不作为正式物理论证依据
+
+---
+
+## 9. 环境依赖
+
+安装依赖：
+
+```powershell
+pip install -r requirements.txt
+```
+
+当前依赖文件：
+
+```text
+requirements.txt
+```
+
+缓存和输出忽略规则见：
+
+```text
+.gitignore
+```
+
+---
+
+## 10. 推荐推进顺序
+
+### 反演侧
+
+1. 固定 `10° + 80° + s`
+2. 做多厚度验证表
+3. 再做小范围色散参数扫描
+
+### 教学主树侧
+
+1. 保持目录 JSON 结构稳定
+2. 让前端先接首页、案例页、对比页
+3. 再补统一结果摘要结构
+4. 最后再考虑 GUI / Web 原型
+
+### 光栅波导支线
+
+1. 锁最终 `period`
+2. 扫 `t_wg`
+3. 扫 `fill_factor`
+4. 补吸收与损耗影响

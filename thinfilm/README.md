@@ -42,8 +42,8 @@ from pathlib import Path
 from thinfilm import fit_two_angle
 
 result = fit_two_angle(
-    csv_angle1=Path("data/deg.s/60nm_10deg_s.csv"),
-    csv_angle2=Path("data/deg.s/60nm_80deg_s.csv"),
+    csv_angle1=Path("archive/inversion_examples/deg.s/60nm_10deg_s.csv"),
+    csv_angle2=Path("archive/inversion_examples/deg.s/60nm_80deg_s.csv"),
     theta1_deg=10.0,
     theta2_deg=80.0,
     pol="s",

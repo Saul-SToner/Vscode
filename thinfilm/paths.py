@@ -4,7 +4,9 @@ from pathlib import Path
 
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = PROJECT_DIR / "data"
+ARCHIVE_DIR = PROJECT_DIR / "archive"
+INVERSION_DATA_DIR = ARCHIVE_DIR / "inversion_examples"
+DATA_DIR = INVERSION_DATA_DIR
 OUTPUT_DIR = Path(r"C:\Users\L2791\thinfilm_outputs")
 
 DEG_S_DIR = DATA_DIR / "deg.s"
