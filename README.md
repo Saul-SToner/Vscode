@@ -8,6 +8,11 @@
 2. 教学型正向仿真  
    用 Python 复现设计报告中的多层膜系案例，输出反射率、透射率、吸收率及图表。
 
+另外，仓库中已经开始搭建一个独立支线：
+
+3. 光栅波导研究支线  
+   用于承接“异构薄膜 -> 周期光栅 -> 波导共振 -> 窄线宽反射镜设计”的后续研究。
+
 ## 当前状态
 
 目前项目已经形成两条主线：
@@ -15,12 +20,22 @@
 - 反演主线：`10° + 80° + s 偏振` 双角厚度反演
 - 教学主树：第 2 章 7 个案例的正向仿真、导出和目录配置
 
+当前对外教学平台建议采用：
+
+```text
+只展示教学主树
+不展示厚度反演入口
+反演代码继续保留在仓库中用于研究
+```
+
 ## 项目结构
 
 ```text
 thinfilm_core.py          早期集中式反演脚本
 thinfilm/                 推荐使用的轻量函数包
+guided_grating/           光栅波导支线骨架
 run_teaching_demo.py      教学主树演示脚本
+run_guided_grating_demo.py 光栅波导支线最小示例
 data/                     数据目录
 ```
 
@@ -66,6 +81,12 @@ C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_teaching
 C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_teaching_demo.py --report
 ```
 
+### 6. 运行光栅波导支线最小示例
+
+```powershell
+C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_guided_grating_demo.py
+```
+
 ## 教学主树覆盖案例
 
 1. 单层减反射膜
@@ -97,6 +118,14 @@ from thinfilm import (
     export_teaching_main_branch_catalog,
     export_teaching_report_bundle,
 )
+```
+
+### 光栅波导支线
+
+```python
+from guided_grating import build_minimal_demo_spec, run_minimal_demo
+
+result = run_minimal_demo()
 ```
 
 ## 主要输出
@@ -131,6 +160,18 @@ teaching_compare_*.png
 - 参数表单分组 `case_form_groups`
 - 表单渲染提示 `form_ui_meta`
 
+另外还包含：
+
+- 平台显示范围 `platform_scope`
+
+其中当前约定为：
+
+```text
+show_thickness_inversion = false
+```
+
+即教学平台不暴露厚度反演入口。
+
 这份 JSON 可以直接提供给前端或 APP 原型使用。
 
 ## 反演主线说明
@@ -150,12 +191,15 @@ s 偏振
 80deg_s.csv
 ```
 
+这一部分当前建议保留在“研究模式”或内部工具中，不放进教学平台首页入口。
+
 ## 注意事项
 
 1. 当前反演主线主要针对单层膜
 2. `mixed / avg` 不建议直接作为主拟合输入
 3. JSON 文件是 UTF-8，若 PowerShell 显示中文乱码，通常是终端编码问题，不是文件损坏
 4. 教学主树是 Python 正向实现，适合教学平台和前端演示，不等于 COMSOL 场分布逐点复刻
+5. `guided_grating/` 当前求解器仍是明确标注的占位共振模型，只用于支线工程骨架和导出链路验证
 
 ## 后续建议
 

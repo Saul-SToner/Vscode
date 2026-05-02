@@ -1123,6 +1123,13 @@ def get_report_main_branch_catalog() -> Dict[str, Any]:
         "title_cn": "设计报告主树",
         "title_en": "Teaching Report Main Branch",
         "chapter": "report_chapter2",
+        "platform_scope": {
+            "mode": "teaching_forward_only",
+            "show_thickness_inversion": False,
+            "show_research_branches": False,
+            "notes_cn": "教学平台当前只暴露正向仿真、案例导出、对比图和目录配置，不暴露厚度反演入口。",
+            "notes_en": "The teaching platform exposes forward simulation, exports, comparison figures, and catalog metadata only; thickness inversion is intentionally hidden.",
+        },
         "home_cards": cards,
         "home_summary": {
             "case_count": len(cards),

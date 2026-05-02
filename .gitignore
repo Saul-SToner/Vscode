@@ -1,0 +1,38 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Tooling caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+
+# Local outputs
+thinfilm_outputs/
+*.log
+
+# Large or local experimental data that should usually stay out of git
+data/deg.p/_tmp_*/
+data/deg.p/scaled_0p1_from_pcsv/
+data/deg.p/split_from_*/
+data/deg.p/_tmp_100nm_p_split/
+data/deg.p/_tmp_120nm_p_split/
+
