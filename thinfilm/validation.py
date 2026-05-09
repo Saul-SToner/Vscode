@@ -7,6 +7,7 @@ from typing import Any, Dict, Iterable, List, Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.font_manager import FontProperties
 
 from .education import list_report_chapter2_cases, simulate_report_case
 from .io import load_spectrum_csv
@@ -22,10 +23,17 @@ TARGET_GREEN = "#0f766e"
 GRID_COLOR = "#d7dde5"
 TEXT_DARK = "#223046"
 PANEL_BG = "#f7f8fb"
+CN_FONT_CANDIDATES = (
+    Path(r"C:\Windows\Fonts\msyh.ttc"),
+    Path(r"C:\Windows\Fonts\simhei.ttf"),
+    Path(r"C:\Windows\Fonts\simsun.ttc"),
+)
 
 EXPANSION_VALIDATION_CASE_IDS: tuple[str, ...] = (
     "quarter_wave_single_layer",
     "half_wave_single_layer",
+    "porous_sio2_layer",
+    "moth_eye_effective_gradient",
     "quarter_wave_double_layer",
     "quarter_wave_stack",
     "bragg_reflector",
@@ -44,6 +52,59 @@ def _style_axis(ax: plt.Axes) -> None:
     ax.xaxis.label.set_color(TEXT_DARK)
     ax.yaxis.label.set_color(TEXT_DARK)
     ax.title.set_color(TEXT_DARK)
+
+
+def _cn_font() -> FontProperties | None:
+    for path in CN_FONT_CANDIDATES:
+        if path.exists():
+            return FontProperties(fname=str(path))
+    return None
+
+
+def _set_axis_labels_cn(ax: plt.Axes, *, title: str, xlabel: str, ylabel: str) -> None:
+    font = _cn_font()
+    if font is None:
+        ax.set_title(title)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        return
+    ax.set_title(title, fontproperties=font)
+    ax.set_xlabel(xlabel, fontproperties=font)
+    ax.set_ylabel(ylabel, fontproperties=font)
+
+
+def _validation_core_metrics(result: Dict[str, Any]) -> Dict[str, Any]:
+    summary = result["summary"]
+    quantity = str(result["quantity"])
+    lambda0_nm = float(result["lambda0_nm"])
+    return {
+        "quantity": quantity,
+        "lambda0_nm": lambda0_nm,
+        "theory_at_lambda0": float(summary["theory_at_lambda0"]),
+        "reference_at_lambda0": float(summary["reference_at_lambda0"]),
+        "mae": float(summary["mae"]),
+        "rmse": float(summary["rmse"]),
+        "max_abs_error": float(summary["max_abs_error"]),
+        "mean_bias": float(summary["mean_bias"]),
+        "lambda0_error": float(summary["lambda0_error"]),
+    }
+
+
+def _validation_core_metrics_cn(result: Dict[str, Any]) -> Dict[str, Any]:
+    core = _validation_core_metrics(result)
+    quantity = core["quantity"]
+    lambda0_nm = core["lambda0_nm"]
+    return {
+        "主比较量": quantity,
+        "中心波长_nm": lambda0_nm,
+        f"理论{quantity}@中心波长": core["theory_at_lambda0"],
+        f"参考{quantity}@中心波长": core["reference_at_lambda0"],
+        "平均绝对误差_MAE": core["mae"],
+        "均方根误差_RMSE": core["rmse"],
+        "最大绝对误差": core["max_abs_error"],
+        "平均偏差": core["mean_bias"],
+        "中心点误差": core["lambda0_error"],
+    }
 
 
 def _default_case_quantity(case_id: str) -> str:
@@ -71,6 +132,28 @@ def _pick_quantity(case_id: str, reference_kind: str, quantity: str | None) -> s
     if ref_quantity is not None:
         return ref_quantity
     return _default_case_quantity(case_id)
+
+
+def _selector_fallbacks(quantity: str, selector: int | str | None) -> List[int | str | None]:
+    candidates: List[int | str | None] = []
+    if selector is not None:
+        candidates.append(selector)
+    key = str(quantity).strip().upper()
+    if key == "R":
+        candidates.extend(["R (1)", "reflectance", "abs(ewfd.S11)^2 (1)"])
+    elif key == "T":
+        candidates.extend(["T (1)", "transmittance", "abs(ewfd.S21)^2 (1)"])
+    elif key == "A":
+        candidates.extend(["A (1)", "absorptance", "1-abs(ewfd.S11)^2-abs(ewfd.S21)^2 (1)"])
+    seen = set()
+    deduped: List[int | str | None] = []
+    for item in candidates:
+        key2 = repr(item)
+        if key2 in seen:
+            continue
+        seen.add(key2)
+        deduped.append(item)
+    return deduped
 
 
 def _series_for_quantity(result: Dict[str, Any], quantity: str) -> np.ndarray:
@@ -118,9 +201,19 @@ def compare_teaching_case_to_reference(
     """Compare one teaching-case theory curve against a CSV reference curve."""
 
     theory_result = simulate_report_case(case_id, **case_overrides)
-    ref_spec = load_spectrum_csv(Path(reference_csv), y_selector=y_selector)
+    requested_quantity = quantity
+    ref_spec = None
+    last_error: Exception | None = None
+    for selector_try in _selector_fallbacks(str(requested_quantity or ""), y_selector):
+        try:
+            ref_spec = load_spectrum_csv(Path(reference_csv), y_selector=selector_try)
+            break
+        except Exception as exc:
+            last_error = exc
+    if ref_spec is None:
+        raise ValueError(f"无法读取参考曲线列: {reference_csv}. 最后错误: {last_error}")
 
-    active_quantity = _pick_quantity(case_id, ref_spec.y_kind, quantity)
+    active_quantity = _pick_quantity(case_id, ref_spec.y_kind, requested_quantity)
     theory_y = _series_for_quantity(theory_result, active_quantity)
     ref_x = np.asarray(ref_spec.x_nm, dtype=float)
     ref_y = np.asarray(ref_spec.y, dtype=float)
@@ -459,6 +552,8 @@ def export_teaching_validation_result(
     reference = np.asarray(comp["reference"], dtype=float)
     error = np.asarray(comp["error"], dtype=float)
     summary = result["summary"]
+    core_metrics = _validation_core_metrics(result)
+    core_metrics_cn = _validation_core_metrics_cn(result)
     display_title = str(result.get("title_en") or result.get("title_cn") or result["case_id"])
 
     if save_csv:
@@ -474,10 +569,13 @@ def export_teaching_validation_result(
         payload = {
             "case_id": result["case_id"],
             "title_cn": result["title_cn"],
+            "title_en": result.get("title_en"),
             "quantity": result["quantity"],
             "reference_label": result["reference_label"],
             "reference_csv": result["reference_csv"],
             "summary": summary,
+            "core_metrics": core_metrics,
+            "core_metrics_cn": core_metrics_cn,
         }
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
@@ -486,21 +584,26 @@ def export_teaching_validation_result(
     if save_txt:
         txt_path = output_file(f"{stem}_summary.txt")
         lines = [
-            "Teaching Validation Summary",
+            "教学验证摘要",
             "=" * 80,
             f"case_id              = {result['case_id']}",
             f"title_cn             = {result['title_cn']}",
+            f"title_en             = {result.get('title_en', '')}",
             f"quantity             = {result['quantity']}",
             f"reference_label      = {result['reference_label']}",
             f"reference_csv        = {result['reference_csv']}",
-            f"lambda0_nm           = {float(result['lambda0_nm']):.6f}",
-            f"mae                  = {float(summary['mae']):.12e}",
-            f"rmse                 = {float(summary['rmse']):.12e}",
-            f"max_abs_error        = {float(summary['max_abs_error']):.12e}",
-            f"mean_bias            = {float(summary['mean_bias']):.12e}",
-            f"lambda0_error        = {float(summary['lambda0_error']):.12e}",
+            "-" * 80,
+            "核心指标：",
+            f"中心波长 (nm)        = {core_metrics['lambda0_nm']:.6f}",
+            f"理论值@中心波长      = {core_metrics['theory_at_lambda0']:.12e}",
+            f"参考值@中心波长      = {core_metrics['reference_at_lambda0']:.12e}",
+            f"MAE                  = {core_metrics['mae']:.12e}",
+            f"RMSE                 = {core_metrics['rmse']:.12e}",
+            f"最大绝对误差         = {core_metrics['max_abs_error']:.12e}",
+            f"平均偏差             = {core_metrics['mean_bias']:.12e}",
+            f"中心点误差           = {core_metrics['lambda0_error']:.12e}",
         ]
-        with open(txt_path, "w", encoding="utf-8") as f:
+        with open(txt_path, "w", encoding="utf-8-sig") as f:
             f.write("\n".join(lines) + "\n")
         saved["txt"] = str(txt_path)
 
@@ -593,13 +696,15 @@ def export_teaching_validation_suite_summary(
 
     csv_path = output_file(f"{filename_prefix}_summary.csv")
     with open(csv_path, "w", encoding="utf-8-sig") as f:
-        f.write("case_id,quantity,reference_label,mae,rmse,max_abs_error,mean_bias,lambda0_error\n")
+        f.write("case_id,title_cn,title_en,quantity,reference_label,mae,rmse,max_abs_error,mean_bias,lambda0_error,theory_at_lambda0,reference_at_lambda0\n")
         for item in rows:
             s = item["summary"]
             f.write(
                 ",".join(
                     [
                         str(item["case_id"]),
+                        str(item.get("title_cn", "")),
+                        str(item.get("title_en", "")),
                         str(item["quantity"]),
                         str(item["reference_label"]),
                         f"{float(s['mae']):.12g}",
@@ -607,6 +712,8 @@ def export_teaching_validation_suite_summary(
                         f"{float(s['max_abs_error']):.12g}",
                         f"{float(s['mean_bias']):.12g}",
                         f"{float(s['lambda0_error']):.12g}",
+                        f"{float(s['theory_at_lambda0']):.12g}",
+                        f"{float(s['reference_at_lambda0']):.12g}",
                     ]
                 )
                 + "\n"
@@ -618,15 +725,42 @@ def export_teaching_validation_suite_summary(
         {
             "case_id": item["case_id"],
             "title_cn": item["title_cn"],
+            "title_en": item.get("title_en"),
             "quantity": item["quantity"],
             "reference_label": item["reference_label"],
             "summary": item["summary"],
+            "core_metrics": _validation_core_metrics(item),
+            "core_metrics_cn": _validation_core_metrics_cn(item),
         }
         for item in rows
     ]
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
     saved["json"] = str(json_path)
+
+    txt_path = output_file(f"{filename_prefix}_summary.txt")
+    lines = ["教学验证总览摘要", "=" * 80, ""]
+    for item in rows:
+        core = _validation_core_metrics(item)
+        lines.extend(
+            [
+                f"case_id              = {item['case_id']}",
+                f"title_cn             = {item.get('title_cn', '')}",
+                f"title_en             = {item.get('title_en', '')}",
+                f"quantity             = {item['quantity']}",
+                f"reference_label      = {item['reference_label']}",
+                f"MAE                  = {core['mae']:.12e}",
+                f"RMSE                 = {core['rmse']:.12e}",
+                f"最大绝对误差         = {core['max_abs_error']:.12e}",
+                f"中心点误差           = {core['lambda0_error']:.12e}",
+                f"理论值@中心波长      = {core['theory_at_lambda0']:.12e}",
+                f"参考值@中心波长      = {core['reference_at_lambda0']:.12e}",
+                "-" * 80,
+            ]
+        )
+    with open(txt_path, "w", encoding="utf-8-sig") as f:
+        f.write("\n".join(lines) + "\n")
+    saved["txt"] = str(txt_path)
 
     png_path = output_file(f"{filename_prefix}_overview.png")
     labels = [str(item["title_en"] or item["case_id"]) for item in rows]
@@ -1002,4 +1136,934 @@ def export_candidate_case_ranking(
     with open(txt_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
     saved["txt"] = str(txt_path)
+    return saved
+
+
+def build_advanced_ar_validation_cases(
+    single_ar_csv: Path | str,
+    porous_csv: Path | str,
+    moth_eye_effective_csv: Path | str,
+    moth_eye_2d_csv: Path | str,
+    *,
+    reference_label: str = "COMSOL",
+) -> List[Dict[str, Any]]:
+    """Build a themed validation suite for advanced anti-reflection structures."""
+
+    return [
+        {
+            "case_id": "single_ar",
+            "reference_csv": str(Path(single_ar_csv)),
+            "y_selector": "R (1)",
+            "quantity": "R",
+            "reference_label": reference_label,
+            "overrides": {
+                "theta_deg": 0.0,
+                "pol": "p",
+                "lambda0_nm": 550.0,
+                "n_incident": 1.0,
+                "n_substrate": 1.52,
+                "n_low": 1.38,
+            },
+        },
+        {
+            "case_id": "porous_sio2_layer",
+            "reference_csv": str(Path(porous_csv)),
+            "y_selector": "R (1)",
+            "quantity": "R",
+            "reference_label": reference_label,
+            "overrides": {
+                "theta_deg": 0.0,
+                "pol": "p",
+                "lambda0_nm": 550.0,
+                "n_incident": 1.0,
+                "n_substrate": 1.52,
+                "n_low": 1.32,
+            },
+        },
+        {
+            "case_id": "moth_eye_effective_gradient",
+            "reference_csv": str(Path(moth_eye_effective_csv)),
+            "y_selector": "R (1)",
+            "quantity": "R",
+            "reference_label": reference_label,
+            "overrides": {
+                "theta_deg": 0.0,
+                "pol": "p",
+                "lambda0_nm": 550.0,
+                "n_incident": 1.0,
+                "n_substrate": 1.5215,
+                "n_top": 1.10,
+                "n_bottom": 1.50,
+                "d_total_nm": 300.0,
+                "num_gradient_layers": 5,
+                "gradient_type": "linear",
+                "layer_indices": [1.10, 1.20, 1.30, 1.40, 1.50],
+                "layer_thickness_nm": [60.0, 60.0, 60.0, 60.0, 60.0],
+            },
+        },
+        {
+            "case_id": "moth_eye_effective_gradient",
+            "reference_csv": str(Path(moth_eye_2d_csv)),
+            "y_selector": "abs(ewfd.S11)^2 (1)",
+            "quantity": "R",
+            "reference_label": reference_label,
+            "overrides": {
+                "theta_deg": 0.0,
+                "pol": "p",
+                "lambda0_nm": 550.0,
+                "n_incident": 1.0,
+                "n_substrate": 1.5215,
+                "n_top": 1.10,
+                "n_bottom": 1.50,
+                "d_total_nm": 300.0,
+                "num_gradient_layers": 5,
+                "gradient_type": "linear",
+                "layer_indices": [1.10, 1.20, 1.30, 1.40, 1.50],
+                "layer_thickness_nm": [60.0, 60.0, 60.0, 60.0, 60.0],
+            },
+        },
+    ]
+
+
+def _advanced_ar_display_rows(results: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for item in results:
+        ref_path = Path(str(item["reference_csv"]))
+        ref_name = ref_path.stem.lower()
+        if item["case_id"] == "single_ar":
+            topic_cn = "单层减反膜"
+        elif item["case_id"] == "porous_sio2_layer":
+            topic_cn = "多孔二氧化硅膜层"
+        elif "moth_eye_2d" in ref_name or "trapezoid" in ref_name:
+            topic_cn = "2D 蛾眼梯形结构（COMSOL）"
+        else:
+            topic_cn = "蛾眼结构（等效渐变层）"
+
+        rows.append(
+            {
+                "topic_cn": topic_cn,
+                "case_id": str(item["case_id"]),
+                "reference_csv": str(ref_path),
+                "reference_label": str(item["reference_label"]),
+                "summary": dict(item["summary"]),
+                "comparison": item["comparison"],
+                "title_cn": str(item["title_cn"]),
+                "quantity": str(item["quantity"]),
+            }
+        )
+    return rows
+
+
+def export_advanced_ar_bundle(
+    single_ar_csv: Path | str,
+    porous_csv: Path | str,
+    moth_eye_effective_csv: Path | str,
+    moth_eye_2d_csv: Path | str,
+    *,
+    prefix: str = "advanced_ar_bundle",
+    reference_label: str = "COMSOL",
+    save_plot: bool = True,
+    save_csv: bool = True,
+    save_json: bool = True,
+    save_txt: bool = True,
+) -> Dict[str, Any]:
+    """Export a focused bundle for the advanced anti-reflection topic."""
+
+    cases = build_advanced_ar_validation_cases(
+        single_ar_csv=single_ar_csv,
+        porous_csv=porous_csv,
+        moth_eye_effective_csv=moth_eye_effective_csv,
+        moth_eye_2d_csv=moth_eye_2d_csv,
+        reference_label=reference_label,
+    )
+    results = run_teaching_validation_suite(cases)
+    display_rows = _advanced_ar_display_rows(results)
+
+    exported_cases: Dict[str, Dict[str, str]] = {}
+    for index, item in enumerate(results, start=1):
+        case_prefix = f"{prefix}_{index:02d}"
+        exported_cases[display_rows[index - 1]["topic_cn"]] = export_teaching_validation_result(
+            item,
+            prefix=case_prefix,
+            save_plot=save_plot,
+            save_csv=save_csv,
+            save_json=save_json,
+            save_txt=save_txt,
+        )
+
+    suite_files = export_teaching_validation_suite_summary(
+        results,
+        filename_prefix=f"{prefix}_validation_suite",
+    )
+
+    saved: Dict[str, Any] = {
+        "case_files": exported_cases,
+        "suite_files": suite_files,
+        "results": results,
+    }
+
+    if save_csv:
+        csv_path = output_file(f"{prefix}_summary.csv")
+        with open(csv_path, "w", encoding="utf-8-sig") as f:
+            f.write(
+                "topic_cn,case_id,reference_csv,mae,rmse,max_abs_error,lambda0_error,theory_at_lambda0,reference_at_lambda0\n"
+            )
+            for row in display_rows:
+                s = row["summary"]
+                f.write(
+                    ",".join(
+                        [
+                            str(row["topic_cn"]),
+                            str(row["case_id"]),
+                            str(row["reference_csv"]),
+                            f"{float(s['mae']):.12g}",
+                            f"{float(s['rmse']):.12g}",
+                            f"{float(s['max_abs_error']):.12g}",
+                            f"{float(s['lambda0_error']):.12g}",
+                            f"{float(s['theory_at_lambda0']):.12g}",
+                            f"{float(s['reference_at_lambda0']):.12g}",
+                        ]
+                    )
+                    + "\n"
+                )
+        saved["csv"] = str(csv_path)
+
+    if save_json:
+        json_path = output_file(f"{prefix}_summary.json")
+        payload = {
+            "reference_label": reference_label,
+            "topics": [
+                {
+                    "topic_cn": row["topic_cn"],
+                    "case_id": row["case_id"],
+                    "reference_csv": row["reference_csv"],
+                    "summary": row["summary"],
+                    "files": exported_cases[row["topic_cn"]],
+                }
+                for row in display_rows
+            ],
+            "suite_files": suite_files,
+        }
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        saved["json"] = str(json_path)
+
+    if save_txt:
+        txt_path = output_file(f"{prefix}_summary.txt")
+        lines = [
+            "高级减反专题总包",
+            "=" * 80,
+            "包含主题：单层减反膜、多孔二氧化硅膜层、蛾眼等效渐变层、2D 蛾眼 COMSOL",
+            "",
+        ]
+        for row in display_rows:
+            s = row["summary"]
+            lines.extend(
+                [
+                    f"主题                 = {row['topic_cn']}",
+                    f"theory_case_id       = {row['case_id']}",
+                    f"reference_csv        = {row['reference_csv']}",
+                    f"MAE                  = {float(s['mae']):.12e}",
+                    f"RMSE                 = {float(s['rmse']):.12e}",
+                    f"max_abs_error        = {float(s['max_abs_error']):.12e}",
+                    f"lambda0_error        = {float(s['lambda0_error']):+.12e}",
+                    f"theory_at_lambda0    = {float(s['theory_at_lambda0']):.12e}",
+                    f"reference_at_lambda0 = {float(s['reference_at_lambda0']):.12e}",
+                    "-" * 80,
+                ]
+            )
+        with open(txt_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        saved["txt"] = str(txt_path)
+
+    if save_plot:
+        fig, axes = plt.subplots(2, 2, figsize=(13, 9), constrained_layout=True)
+        font = _cn_font()
+
+        # Panel 1: all reference curves
+        ax = axes[0, 0]
+        for row in display_rows:
+            comp = row["comparison"]
+            wl = np.asarray(comp["wavelength_nm"], dtype=float)
+            ref = np.asarray(comp["reference"], dtype=float)
+            ax.plot(wl, ref, linewidth=2.0, label=row["topic_cn"])
+        _style_axis(ax)
+        _set_axis_labels_cn(ax, title="参考曲线总览", xlabel="波长 (nm)", ylabel="反射率 R")
+        ax.legend(prop=font, frameon=False, loc="best")
+
+        # Panel 2: theory progression + 2D reference
+        ax = axes[0, 1]
+        for row in display_rows[:3]:
+            comp = row["comparison"]
+            wl = np.asarray(comp["wavelength_nm"], dtype=float)
+            theory = np.asarray(comp["theory"], dtype=float)
+            ax.plot(wl, theory, linewidth=2.0, label=f"{row['topic_cn']}（理论）")
+        last = display_rows[-1]
+        ax.plot(
+            np.asarray(last["comparison"]["wavelength_nm"], dtype=float),
+            np.asarray(last["comparison"]["reference"], dtype=float),
+            linewidth=2.2,
+            linestyle="--",
+            color=REF_BLUE,
+            label="2D 蛾眼梯形结构（COMSOL）",
+        )
+        _style_axis(ax)
+        _set_axis_labels_cn(ax, title="减反结构演化对照", xlabel="波长 (nm)", ylabel="反射率 R")
+        ax.legend(prop=font, frameon=False, loc="best")
+
+        # Panel 3: lambda0 reflectance
+        ax = axes[1, 0]
+        labels = [row["topic_cn"] for row in display_rows]
+        values = [float(row["summary"]["reference_at_lambda0"]) for row in display_rows]
+        x = np.arange(len(labels))
+        bars = ax.bar(x, values, color=[MAIN_RED, TARGET_GREEN, REF_BLUE, "#6b46c1"])
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels, rotation=18, ha="right", fontproperties=font)
+        for bar, value in zip(bars, values):
+            ax.text(
+                bar.get_x() + bar.get_width() / 2.0,
+                value + max(values) * 0.03,
+                f"{value:.4f}",
+                ha="center",
+                va="bottom",
+                fontsize=9,
+                color=TEXT_DARK,
+            )
+        _style_axis(ax)
+        _set_axis_labels_cn(ax, title="550 nm 处反射率", xlabel="结构类型", ylabel="反射率 R")
+
+        # Panel 4: validation MAE
+        ax = axes[1, 1]
+        mae_vals = [float(row["summary"]["mae"]) for row in display_rows]
+        bars = ax.bar(x, mae_vals, color=[MAIN_RED, TARGET_GREEN, REF_BLUE, "#6b46c1"])
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels, rotation=18, ha="right", fontproperties=font)
+        for bar, value in zip(bars, mae_vals):
+            ax.text(
+                bar.get_x() + bar.get_width() / 2.0,
+                value + max(mae_vals) * 0.03,
+                f"{value:.4f}",
+                ha="center",
+                va="bottom",
+                fontsize=9,
+                color=TEXT_DARK,
+            )
+        _style_axis(ax)
+        _set_axis_labels_cn(ax, title="理论与参考曲线 MAE", xlabel="结构类型", ylabel="MAE")
+
+        png_path = output_file(f"{prefix}_overview.png")
+        fig.savefig(png_path, dpi=180, bbox_inches="tight")
+        plt.close(fig)
+        saved["overview_png"] = str(png_path)
+
+    manifest_path = output_file(f"{prefix}_manifest.json")
+    manifest = {
+        "reference_label": reference_label,
+        "topics": [
+            {
+                "topic_cn": row["topic_cn"],
+                "case_id": row["case_id"],
+                "reference_csv": row["reference_csv"],
+                "summary": row["summary"],
+                "files": exported_cases[row["topic_cn"]],
+            }
+            for row in display_rows
+        ],
+        "suite_files": suite_files,
+        "bundle_files": {
+            key: value
+            for key, value in saved.items()
+            if key not in {"case_files", "suite_files", "results"}
+        },
+    }
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, ensure_ascii=False, indent=2)
+    saved["manifest"] = str(manifest_path)
+    return saved
+
+
+def analyze_quasi_random_absorbing_surface(
+    reference_csv: Path | str,
+    *,
+    lambda0_nm: float = 550.0,
+    x_selector: int | str = "lam/1[nm] (1)",
+    r_selector: int | str = "abs(ewfd.S11)^2 (1)",
+    t_selector: int | str = "abs(ewfd.S21)^2 (1)",
+    a_selector: int | str = "1-abs(ewfd.S11)^2-abs(ewfd.S21)^2 (1)",
+) -> Dict[str, Any]:
+    """Analyze a 2D periodic quasi-random rough absorbing surface CSV."""
+
+    r_spec = load_spectrum_csv(Path(reference_csv), x_selector=x_selector, y_selector=r_selector)
+    t_spec = load_spectrum_csv(Path(reference_csv), x_selector=x_selector, y_selector=t_selector)
+    a_spec = load_spectrum_csv(Path(reference_csv), x_selector=x_selector, y_selector=a_selector)
+
+    wl = np.asarray(r_spec.x_nm, dtype=float)
+    r_vals = np.asarray(r_spec.y, dtype=float)
+    t_vals = np.asarray(t_spec.y, dtype=float)
+    a_vals = np.asarray(a_spec.y, dtype=float)
+
+    summary = {
+        "lambda_min_nm": float(np.min(wl)),
+        "lambda_max_nm": float(np.max(wl)),
+        "num_points": int(len(wl)),
+        "R_min": float(np.min(r_vals)),
+        "R_max": float(np.max(r_vals)),
+        "R_mean": float(np.mean(r_vals)),
+        "T_min": float(np.min(t_vals)),
+        "T_max": float(np.max(t_vals)),
+        "T_mean": float(np.mean(t_vals)),
+        "A_min": float(np.min(a_vals)),
+        "A_max": float(np.max(a_vals)),
+        "A_mean": float(np.mean(a_vals)),
+        "R_at_lambda0": float(np.interp(lambda0_nm, wl, r_vals)),
+        "T_at_lambda0": float(np.interp(lambda0_nm, wl, t_vals)),
+        "A_at_lambda0": float(np.interp(lambda0_nm, wl, a_vals)),
+        "A_peak_wavelength_nm": float(wl[np.argmax(a_vals)]),
+        "R_peak_wavelength_nm": float(wl[np.argmax(r_vals)]),
+        "T_peak_wavelength_nm": float(wl[np.argmax(t_vals)]),
+        "energy_balance_mean": float(np.mean(r_vals + t_vals + a_vals)),
+        "energy_balance_max_error": float(np.max(np.abs(r_vals + t_vals + a_vals - 1.0))),
+    }
+
+    if summary["A_mean"] >= 0.6:
+        interpretation_cn = "该结构在当前波段表现出明显吸收增强，吸收是主导能量通道。"
+    elif summary["A_mean"] >= 0.4:
+        interpretation_cn = "该结构具有中等吸收增强效果，反射与吸收共同决定能量分配。"
+    else:
+        interpretation_cn = "该结构当前吸收增强有限，仍需进一步优化粗糙表面参数或材料损耗。"
+
+    return {
+        "case_id": "quasi_random_absorbing_surface",
+        "title_cn": "准随机粗糙吸收表面",
+        "title_en": "Periodic Quasi-Random Rough Absorbing Surface",
+        "reference_csv": str(Path(reference_csv)),
+        "reference_label": "COMSOL",
+        "lambda0_nm": float(lambda0_nm),
+        "wavelength_nm": wl,
+        "R": r_vals,
+        "T": t_vals,
+        "A": a_vals,
+        "summary": summary,
+        "interpretation_cn": interpretation_cn,
+    }
+
+
+def export_quasi_random_absorbing_surface_bundle(
+    reference_csv: Path | str,
+    *,
+    prefix: str = "rough_absorbing_surface",
+    lambda0_nm: float = 550.0,
+    save_plot: bool = True,
+    save_csv: bool = True,
+    save_json: bool = True,
+    save_txt: bool = True,
+) -> Dict[str, str]:
+    """Export analysis files for a rough absorbing surface COMSOL result."""
+
+    result = analyze_quasi_random_absorbing_surface(reference_csv, lambda0_nm=lambda0_nm)
+    saved: Dict[str, str] = {}
+    wl = np.asarray(result["wavelength_nm"], dtype=float)
+    r_vals = np.asarray(result["R"], dtype=float)
+    t_vals = np.asarray(result["T"], dtype=float)
+    a_vals = np.asarray(result["A"], dtype=float)
+    summary = result["summary"]
+
+    if save_csv:
+        csv_path = output_file(f"{prefix}_spectrum.csv")
+        with open(csv_path, "w", encoding="utf-8-sig") as f:
+            f.write("wavelength_nm,R,T,A\n")
+            for row in zip(wl, r_vals, t_vals, a_vals):
+                f.write(",".join(f"{float(x):.12g}" for x in row) + "\n")
+        saved["csv"] = str(csv_path)
+
+    if save_json:
+        json_path = output_file(f"{prefix}_summary.json")
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "case_id": result["case_id"],
+                    "title_cn": result["title_cn"],
+                    "title_en": result["title_en"],
+                    "reference_csv": result["reference_csv"],
+                    "lambda0_nm": result["lambda0_nm"],
+                    "summary": summary,
+                    "interpretation_cn": result["interpretation_cn"],
+                },
+                f,
+                ensure_ascii=False,
+                indent=2,
+            )
+        saved["json"] = str(json_path)
+
+    if save_txt:
+        txt_path = output_file(f"{prefix}_summary.txt")
+        lines = [
+            "准随机粗糙吸收表面分析",
+            "=" * 80,
+            f"reference_csv             = {result['reference_csv']}",
+            f"lambda0_nm                = {float(result['lambda0_nm']):.6f}",
+            f"R_mean                    = {float(summary['R_mean']):.12e}",
+            f"T_mean                    = {float(summary['T_mean']):.12e}",
+            f"A_mean                    = {float(summary['A_mean']):.12e}",
+            f"R_at_lambda0              = {float(summary['R_at_lambda0']):.12e}",
+            f"T_at_lambda0              = {float(summary['T_at_lambda0']):.12e}",
+            f"A_at_lambda0              = {float(summary['A_at_lambda0']):.12e}",
+            f"A_peak_wavelength_nm      = {float(summary['A_peak_wavelength_nm']):.6f}",
+            f"energy_balance_mean       = {float(summary['energy_balance_mean']):.12e}",
+            f"energy_balance_max_error  = {float(summary['energy_balance_max_error']):.12e}",
+            "",
+            f"interpretation_cn         = {result['interpretation_cn']}",
+        ]
+        with open(txt_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        saved["txt"] = str(txt_path)
+
+    if save_plot:
+        fig, axes = plt.subplots(2, 2, figsize=(13, 9), constrained_layout=True)
+        font = _cn_font()
+
+        ax = axes[0, 0]
+        ax.plot(wl, r_vals, color=MAIN_RED, linewidth=2.0, label="反射率 R")
+        ax.plot(wl, t_vals, color=REF_BLUE, linewidth=2.0, label="透射率 T")
+        ax.plot(wl, a_vals, color=TARGET_GREEN, linewidth=2.4, label="吸收率 A")
+        ax.axvline(float(lambda0_nm), color="#7a8696", linestyle="--", linewidth=1.2)
+        _style_axis(ax)
+        _set_axis_labels_cn(ax, title="R / T / A 光谱", xlabel="波长 (nm)", ylabel="比例")
+        ax.legend(prop=font, frameon=False, loc="best")
+
+        ax = axes[0, 1]
+        ax.plot(wl, a_vals, color=TARGET_GREEN, linewidth=2.6)
+        peak_idx = int(np.argmax(a_vals))
+        ax.scatter([wl[peak_idx]], [a_vals[peak_idx]], color=TARGET_GREEN, s=42, zorder=3)
+        ax.axvline(float(summary["A_peak_wavelength_nm"]), color="#7a8696", linestyle="--", linewidth=1.2)
+        _style_axis(ax)
+        _set_axis_labels_cn(ax, title="吸收增强主曲线", xlabel="波长 (nm)", ylabel="吸收率 A")
+
+        ax = axes[1, 0]
+        labels = ["R@550", "T@550", "A@550"]
+        values = [
+            float(summary["R_at_lambda0"]),
+            float(summary["T_at_lambda0"]),
+            float(summary["A_at_lambda0"]),
+        ]
+        colors = [MAIN_RED, REF_BLUE, TARGET_GREEN]
+        x = np.arange(len(labels))
+        bars = ax.bar(x, values, color=colors)
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels)
+        for bar, value in zip(bars, values):
+            ax.text(
+                bar.get_x() + bar.get_width() / 2.0,
+                value + max(values) * 0.03,
+                f"{value:.4f}",
+                ha="center",
+                va="bottom",
+                fontsize=9,
+                color=TEXT_DARK,
+            )
+        _style_axis(ax)
+        _set_axis_labels_cn(ax, title="550 nm 处能量分配", xlabel="指标", ylabel="比例")
+
+        ax = axes[1, 1]
+        metrics = [
+            float(summary["R_mean"]),
+            float(summary["T_mean"]),
+            float(summary["A_mean"]),
+        ]
+        bars = ax.bar(np.arange(3), metrics, color=colors)
+        ax.set_xticks(np.arange(3))
+        if font is None:
+            ax.set_xticklabels(["平均R", "平均T", "平均A"])
+        else:
+            ax.set_xticklabels(["平均R", "平均T", "平均A"], fontproperties=font)
+        for bar, value in zip(bars, metrics):
+            ax.text(
+                bar.get_x() + bar.get_width() / 2.0,
+                value + max(metrics) * 0.03,
+                f"{value:.4f}",
+                ha="center",
+                va="bottom",
+                fontsize=9,
+                color=TEXT_DARK,
+            )
+        _style_axis(ax)
+        _set_axis_labels_cn(ax, title="全波段平均能量分配", xlabel="指标", ylabel="比例")
+
+        png_path = output_file(f"{prefix}_overview.png")
+        fig.savefig(png_path, dpi=180, bbox_inches="tight")
+        plt.close(fig)
+        saved["overview_png"] = str(png_path)
+
+    return saved
+
+
+def export_absorbing_surface_comparison(
+    reference_csv_a: Path | str,
+    reference_csv_b: Path | str,
+    *,
+    prefix: str = "rough_absorbing_surface_compare",
+    lambda0_nm: float = 550.0,
+    label_a: str = "版本1",
+    label_b: str = "版本2",
+) -> Dict[str, str]:
+    """Compare two rough absorbing surface results side by side."""
+
+    result_a = analyze_quasi_random_absorbing_surface(reference_csv_a, lambda0_nm=lambda0_nm)
+    result_b = analyze_quasi_random_absorbing_surface(reference_csv_b, lambda0_nm=lambda0_nm)
+
+    saved: Dict[str, str] = {}
+    wl_a = np.asarray(result_a["wavelength_nm"], dtype=float)
+    wl_b = np.asarray(result_b["wavelength_nm"], dtype=float)
+    r_a = np.asarray(result_a["R"], dtype=float)
+    t_a = np.asarray(result_a["T"], dtype=float)
+    a_a = np.asarray(result_a["A"], dtype=float)
+    r_b = np.asarray(result_b["R"], dtype=float)
+    t_b = np.asarray(result_b["T"], dtype=float)
+    a_b = np.asarray(result_b["A"], dtype=float)
+    s_a = result_a["summary"]
+    s_b = result_b["summary"]
+
+    csv_path = output_file(f"{prefix}.csv")
+    with open(csv_path, "w", encoding="utf-8-sig") as f:
+        f.write("metric,label_a,label_b,delta_b_minus_a\n")
+        for metric in [
+            "R_mean",
+            "T_mean",
+            "A_mean",
+            "R_at_lambda0",
+            "T_at_lambda0",
+            "A_at_lambda0",
+        ]:
+            va = float(s_a[metric])
+            vb = float(s_b[metric])
+            f.write(f"{metric},{va:.12g},{vb:.12g},{(vb-va):.12g}\n")
+    saved["csv"] = str(csv_path)
+
+    json_path = output_file(f"{prefix}.json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "label_a": label_a,
+                "label_b": label_b,
+                "reference_csv_a": str(reference_csv_a),
+                "reference_csv_b": str(reference_csv_b),
+                "summary_a": s_a,
+                "summary_b": s_b,
+            },
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
+    saved["json"] = str(json_path)
+
+    txt_path = output_file(f"{prefix}.txt")
+    lines = [
+        "准随机粗糙吸收表面对比",
+        "=" * 80,
+        f"label_a                    = {label_a}",
+        f"reference_csv_a            = {reference_csv_a}",
+        f"label_b                    = {label_b}",
+        f"reference_csv_b            = {reference_csv_b}",
+        "",
+        f"A_mean (a)                 = {float(s_a['A_mean']):.12e}",
+        f"A_mean (b)                 = {float(s_b['A_mean']):.12e}",
+        f"Delta A_mean (b-a)         = {float(s_b['A_mean'] - s_a['A_mean']):+.12e}",
+        f"A_at_lambda0 (a)           = {float(s_a['A_at_lambda0']):.12e}",
+        f"A_at_lambda0 (b)           = {float(s_b['A_at_lambda0']):.12e}",
+        f"Delta A@lambda0 (b-a)      = {float(s_b['A_at_lambda0'] - s_a['A_at_lambda0']):+.12e}",
+        f"R_mean (a)                 = {float(s_a['R_mean']):.12e}",
+        f"R_mean (b)                 = {float(s_b['R_mean']):.12e}",
+        f"T_mean (a)                 = {float(s_a['T_mean']):.12e}",
+        f"T_mean (b)                 = {float(s_b['T_mean']):.12e}",
+    ]
+    with open(txt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    saved["txt"] = str(txt_path)
+
+    fig, axes = plt.subplots(2, 2, figsize=(13, 9), constrained_layout=True)
+    font = _cn_font()
+
+    ax = axes[0, 0]
+    ax.plot(wl_a, a_a, color=TARGET_GREEN, linewidth=2.4, label=f"{label_a} 吸收率 A")
+    ax.plot(wl_b, a_b, color="#6b46c1", linewidth=2.4, linestyle="--", label=f"{label_b} 吸收率 A")
+    _style_axis(ax)
+    _set_axis_labels_cn(ax, title="吸收率对比", xlabel="波长 (nm)", ylabel="吸收率 A")
+    ax.legend(prop=font, frameon=False, loc="best")
+
+    ax = axes[0, 1]
+    ax.plot(wl_a, r_a, color=MAIN_RED, linewidth=2.0, label=f"{label_a} 反射率 R")
+    ax.plot(wl_b, r_b, color="#d97706", linewidth=2.0, linestyle="--", label=f"{label_b} 反射率 R")
+    _style_axis(ax)
+    _set_axis_labels_cn(ax, title="反射率对比", xlabel="波长 (nm)", ylabel="反射率 R")
+    ax.legend(prop=font, frameon=False, loc="best")
+
+    ax = axes[1, 0]
+    labels = ["A@550", "平均A"]
+    x = np.arange(len(labels))
+    width = 0.35
+    vals_a = [float(s_a["A_at_lambda0"]), float(s_a["A_mean"])]
+    vals_b = [float(s_b["A_at_lambda0"]), float(s_b["A_mean"])]
+    bars_a = ax.bar(x - width / 2, vals_a, width=width, color=TARGET_GREEN, label=label_a)
+    bars_b = ax.bar(x + width / 2, vals_b, width=width, color="#6b46c1", label=label_b)
+    ax.set_xticks(x)
+    if font is None:
+        ax.set_xticklabels(labels)
+    else:
+        ax.set_xticklabels(labels, fontproperties=font)
+    for bars in (bars_a, bars_b):
+        for bar in bars:
+            value = float(bar.get_height())
+            ax.text(
+                bar.get_x() + bar.get_width() / 2.0,
+                value + max(vals_a + vals_b) * 0.03,
+                f"{value:.4f}",
+                ha="center",
+                va="bottom",
+                fontsize=9,
+                color=TEXT_DARK,
+            )
+    _style_axis(ax)
+    _set_axis_labels_cn(ax, title="吸收性能关键指标", xlabel="指标", ylabel="比例")
+    ax.legend(prop=font, frameon=False, loc="best")
+
+    ax = axes[1, 1]
+    delta_labels = ["ΔR均值", "ΔT均值", "ΔA均值"]
+    deltas = [
+        float(s_b["R_mean"] - s_a["R_mean"]),
+        float(s_b["T_mean"] - s_a["T_mean"]),
+        float(s_b["A_mean"] - s_a["A_mean"]),
+    ]
+    colors = [MAIN_RED, REF_BLUE, TARGET_GREEN]
+    bars = ax.bar(np.arange(3), deltas, color=colors)
+    ax.axhline(0.0, color="#7a8696", linewidth=1.0)
+    if font is None:
+        ax.set_xticklabels(delta_labels)
+    else:
+        ax.set_xticks(np.arange(3))
+        ax.set_xticklabels(delta_labels, fontproperties=font)
+    for bar, value in zip(bars, deltas):
+        ax.text(
+            bar.get_x() + bar.get_width() / 2.0,
+            value + (0.002 if value >= 0 else -0.004),
+            f"{value:+.4f}",
+            ha="center",
+            va="bottom" if value >= 0 else "top",
+            fontsize=9,
+            color=TEXT_DARK,
+        )
+    _style_axis(ax)
+    _set_axis_labels_cn(ax, title="版本2 相对版本1 的变化", xlabel="指标", ylabel="差值")
+
+    png_path = output_file(f"{prefix}.png")
+    fig.savefig(png_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    saved["png"] = str(png_path)
+    return saved
+
+
+def export_absorbing_surface_roughness_sweep(
+    roughness_files: Dict[float, Path | str],
+    *,
+    prefix: str = "rough_absorbing_surface_roughness_sweep",
+    lambda0_nm: float = 550.0,
+) -> Dict[str, str]:
+    """Export a roughness-factor sweep summary for absorbing surfaces."""
+
+    rows: List[Dict[str, Any]] = []
+    for factor, path in sorted(roughness_files.items(), key=lambda item: float(item[0])):
+        result = analyze_quasi_random_absorbing_surface(path, lambda0_nm=lambda0_nm)
+        summary = result["summary"]
+        rows.append(
+            {
+                "roughness_factor": float(factor),
+                "reference_csv": str(path),
+                "R_mean": float(summary["R_mean"]),
+                "T_mean": float(summary["T_mean"]),
+                "A_mean": float(summary["A_mean"]),
+                "R_at_lambda0": float(summary["R_at_lambda0"]),
+                "T_at_lambda0": float(summary["T_at_lambda0"]),
+                "A_at_lambda0": float(summary["A_at_lambda0"]),
+            }
+        )
+
+    saved: Dict[str, str] = {}
+    csv_path = output_file(f"{prefix}.csv")
+    with open(csv_path, "w", encoding="utf-8-sig") as f:
+        f.write("roughness_factor,R_mean,T_mean,A_mean,R_at_lambda0,T_at_lambda0,A_at_lambda0,reference_csv\n")
+        for row in rows:
+            f.write(
+                ",".join(
+                    [
+                        f"{row['roughness_factor']:.12g}",
+                        f"{row['R_mean']:.12g}",
+                        f"{row['T_mean']:.12g}",
+                        f"{row['A_mean']:.12g}",
+                        f"{row['R_at_lambda0']:.12g}",
+                        f"{row['T_at_lambda0']:.12g}",
+                        f"{row['A_at_lambda0']:.12g}",
+                        str(row["reference_csv"]),
+                    ]
+                )
+                + "\n"
+            )
+    saved["csv"] = str(csv_path)
+
+    json_path = output_file(f"{prefix}.json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump({"lambda0_nm": lambda0_nm, "rows": rows}, f, ensure_ascii=False, indent=2)
+    saved["json"] = str(json_path)
+
+    txt_path = output_file(f"{prefix}.txt")
+    lines = ["粗糙度扫描摘要", "=" * 80, f"lambda0_nm = {lambda0_nm:.6f}", ""]
+    for row in rows:
+        lines.extend(
+            [
+                f"roughness_factor = {row['roughness_factor']:.6f}",
+                f"R_mean           = {row['R_mean']:.12e}",
+                f"T_mean           = {row['T_mean']:.12e}",
+                f"A_mean           = {row['A_mean']:.12e}",
+                f"R@lambda0        = {row['R_at_lambda0']:.12e}",
+                f"T@lambda0        = {row['T_at_lambda0']:.12e}",
+                f"A@lambda0        = {row['A_at_lambda0']:.12e}",
+                "-" * 80,
+            ]
+        )
+    with open(txt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    saved["txt"] = str(txt_path)
+
+    x = np.array([row["roughness_factor"] for row in rows], dtype=float)
+    r_mean = np.array([row["R_mean"] for row in rows], dtype=float)
+    t_mean = np.array([row["T_mean"] for row in rows], dtype=float)
+    a_mean = np.array([row["A_mean"] for row in rows], dtype=float)
+    a_550 = np.array([row["A_at_lambda0"] for row in rows], dtype=float)
+
+    fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.5), constrained_layout=True)
+    for ax in axes:
+        _style_axis(ax)
+
+    ax = axes[0]
+    ax.plot(x, r_mean, color=MAIN_RED, marker="o", linewidth=2.0, label="平均R")
+    ax.plot(x, t_mean, color=REF_BLUE, marker="o", linewidth=2.0, label="平均T")
+    ax.plot(x, a_mean, color=TARGET_GREEN, marker="o", linewidth=2.4, label="平均A")
+    _set_axis_labels_cn(ax, title="粗糙度因子与全波段平均能量分配", xlabel="粗糙度倍率", ylabel="比例")
+    ax.legend(frameon=False, loc="best", prop=_cn_font())
+
+    ax = axes[1]
+    ax.plot(x, a_550, color=TARGET_GREEN, marker="o", linewidth=2.4)
+    for xi, yi in zip(x, a_550):
+        ax.text(xi, yi + 0.01, f"{yi:.4f}", ha="center", va="bottom", fontsize=9, color=TEXT_DARK)
+    _set_axis_labels_cn(ax, title="粗糙度因子与 550 nm 吸收率", xlabel="粗糙度倍率", ylabel="A@550")
+
+    png_path = output_file(f"{prefix}.png")
+    fig.savefig(png_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    saved["png"] = str(png_path)
+    return saved
+
+
+def summarize_absorbing_surface_roughness(
+    roughness_files: Dict[float, Path | str],
+    *,
+    lambda0_nm: float = 550.0,
+) -> Dict[str, Any]:
+    """Summarize roughness sweep trends and current stable best point."""
+
+    rows: List[Dict[str, Any]] = []
+    for factor, path in sorted(roughness_files.items(), key=lambda item: float(item[0])):
+        result = analyze_quasi_random_absorbing_surface(path, lambda0_nm=lambda0_nm)
+        summary = result["summary"]
+        rows.append(
+            {
+                "roughness_factor": float(factor),
+                "reference_csv": str(path),
+                "R_mean": float(summary["R_mean"]),
+                "T_mean": float(summary["T_mean"]),
+                "A_mean": float(summary["A_mean"]),
+                "R_at_lambda0": float(summary["R_at_lambda0"]),
+                "T_at_lambda0": float(summary["T_at_lambda0"]),
+                "A_at_lambda0": float(summary["A_at_lambda0"]),
+            }
+        )
+
+    if not rows:
+        raise ValueError("roughness_files 不能为空。")
+
+    best_by_a550 = max(rows, key=lambda item: item["A_at_lambda0"])
+    best_by_amean = max(rows, key=lambda item: item["A_mean"])
+    a550_vals = np.array([row["A_at_lambda0"] for row in rows], dtype=float)
+    amean_vals = np.array([row["A_mean"] for row in rows], dtype=float)
+    monotonic_a550 = bool(np.all(np.diff(a550_vals) >= -1e-12))
+    monotonic_amean = bool(np.all(np.diff(amean_vals) >= -1e-12))
+    max_tested_factor = float(max(row["roughness_factor"] for row in rows))
+
+    if monotonic_a550 and monotonic_amean:
+        trend_cn = "在当前可计算范围内，粗糙度增大持续提升吸收。"
+    elif best_by_a550["roughness_factor"] < max_tested_factor:
+        trend_cn = "吸收性能在已测试范围内出现局部最优点，继续增大粗糙度未必更优。"
+    else:
+        trend_cn = "吸收性能总体提升，但局部趋势已不再严格单调，建议结合更多点确认极值。"
+
+    stability_cn = (
+        f"当前已验证的最大可计算粗糙度倍率为 {max_tested_factor:.2f}。"
+        " 若更大粗糙度无法求解，可将其视为当前几何/数值稳定边界附近。"
+    )
+
+    return {
+        "lambda0_nm": float(lambda0_nm),
+        "rows": rows,
+        "best_by_a550": best_by_a550,
+        "best_by_amean": best_by_amean,
+        "monotonic_a550": monotonic_a550,
+        "monotonic_amean": monotonic_amean,
+        "max_tested_factor": max_tested_factor,
+        "trend_cn": trend_cn,
+        "stability_cn": stability_cn,
+    }
+
+
+def export_absorbing_surface_roughness_bundle(
+    roughness_files: Dict[float, Path | str],
+    *,
+    prefix: str = "rough_absorbing_surface_roughness_bundle",
+    lambda0_nm: float = 550.0,
+) -> Dict[str, str]:
+    """Export roughness sweep plots plus an automatic conclusion summary."""
+
+    sweep_files = export_absorbing_surface_roughness_sweep(
+        roughness_files=roughness_files,
+        prefix=prefix,
+        lambda0_nm=lambda0_nm,
+    )
+    summary = summarize_absorbing_surface_roughness(
+        roughness_files=roughness_files,
+        lambda0_nm=lambda0_nm,
+    )
+
+    saved = dict(sweep_files)
+
+    summary_json = output_file(f"{prefix}_conclusion.json")
+    with open(summary_json, "w", encoding="utf-8") as f:
+        json.dump(summary, f, ensure_ascii=False, indent=2)
+    saved["conclusion_json"] = str(summary_json)
+
+    summary_txt = output_file(f"{prefix}_conclusion.txt")
+    lines = [
+        "粗糙吸收表面粗糙度结论",
+        "=" * 80,
+        f"lambda0_nm                  = {float(summary['lambda0_nm']):.6f}",
+        f"best_factor_by_A@lambda0    = {float(summary['best_by_a550']['roughness_factor']):.6f}",
+        f"best_A@lambda0              = {float(summary['best_by_a550']['A_at_lambda0']):.12e}",
+        f"best_factor_by_A_mean       = {float(summary['best_by_amean']['roughness_factor']):.6f}",
+        f"best_A_mean                 = {float(summary['best_by_amean']['A_mean']):.12e}",
+        f"monotonic_A@lambda0         = {bool(summary['monotonic_a550'])}",
+        f"monotonic_A_mean            = {bool(summary['monotonic_amean'])}",
+        f"max_tested_factor           = {float(summary['max_tested_factor']):.6f}",
+        "",
+        f"trend_cn                    = {summary['trend_cn']}",
+        f"stability_cn                = {summary['stability_cn']}",
+    ]
+    with open(summary_txt, "w", encoding="utf-8-sig") as f:
+        f.write("\n".join(lines) + "\n")
+    saved["conclusion_txt"] = str(summary_txt)
     return saved

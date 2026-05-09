@@ -21,8 +21,14 @@ from .roadmap import (
     list_teaching_case_expansion_ids,
 )
 from .validation import (
+    analyze_quasi_random_absorbing_surface,
+    export_absorbing_surface_roughness_bundle,
+    build_advanced_ar_validation_cases,
     build_teaching_expansion_validation_cases_from_mapping,
     build_teaching_expansion_validation_templates,
+    export_advanced_ar_bundle,
+    export_quasi_random_absorbing_surface_bundle,
+    summarize_absorbing_surface_roughness,
     export_teaching_expansion_validation_bundle_from_file,
     export_teaching_expansion_validation_bundle_from_mapping,
     export_teaching_expansion_validation_template_bundle,
@@ -136,6 +142,73 @@ def build_teaching_expansion_validation_cases(
 ) -> list[dict[str, Any]]:
     """Build runnable validation cases from a filled expansion reference mapping."""
     return build_teaching_expansion_validation_cases_from_mapping(reference_mapping)
+
+
+def build_advanced_ar_cases(
+    single_ar_csv: str,
+    porous_csv: str,
+    moth_eye_effective_csv: str,
+    moth_eye_2d_csv: str,
+    *,
+    reference_label: str = "COMSOL",
+) -> list[dict[str, Any]]:
+    """Build the advanced anti-reflection validation suite."""
+    return build_advanced_ar_validation_cases(
+        single_ar_csv=single_ar_csv,
+        porous_csv=porous_csv,
+        moth_eye_effective_csv=moth_eye_effective_csv,
+        moth_eye_2d_csv=moth_eye_2d_csv,
+        reference_label=reference_label,
+    )
+
+
+def export_advanced_ar_topic_bundle(
+    single_ar_csv: str,
+    porous_csv: str,
+    moth_eye_effective_csv: str,
+    moth_eye_2d_csv: str,
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    """Export the advanced anti-reflection topic bundle."""
+    return export_advanced_ar_bundle(
+        single_ar_csv=single_ar_csv,
+        porous_csv=porous_csv,
+        moth_eye_effective_csv=moth_eye_effective_csv,
+        moth_eye_2d_csv=moth_eye_2d_csv,
+        **kwargs,
+    )
+
+
+def analyze_absorbing_surface(
+    reference_csv: str,
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    """Analyze a quasi-random rough absorbing surface COMSOL result."""
+    return analyze_quasi_random_absorbing_surface(reference_csv=reference_csv, **kwargs)
+
+
+def export_absorbing_surface_bundle(
+    reference_csv: str,
+    **kwargs: Any,
+) -> Dict[str, str]:
+    """Export plots and summaries for a quasi-random rough absorbing surface."""
+    return export_quasi_random_absorbing_surface_bundle(reference_csv=reference_csv, **kwargs)
+
+
+def summarize_absorbing_surface_roughness_trend(
+    roughness_files: Dict[float, str],
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    """Summarize the roughness trend of a rough absorbing surface sweep."""
+    return summarize_absorbing_surface_roughness(roughness_files=roughness_files, **kwargs)
+
+
+def export_absorbing_surface_roughness_trend(
+    roughness_files: Dict[float, str],
+    **kwargs: Any,
+) -> Dict[str, str]:
+    """Export roughness sweep plots and automatic conclusion files."""
+    return export_absorbing_surface_roughness_bundle(roughness_files=roughness_files, **kwargs)
 
 
 def export_teaching_expansion_validation_templates(

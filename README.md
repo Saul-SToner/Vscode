@@ -373,6 +373,14 @@ C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_teaching
 - 综合性能总表
 - 竞赛口径中文总结
 
+当前验证导出已统一包含：
+
+- `comparison.csv`：理论、参考与误差逐点对照
+- `summary.json`：包含 `summary`、`core_metrics`、`core_metrics_cn`
+- `summary.txt`：中文核心指标摘要
+- `main.png`：主对照图
+- `analysis.png`：误差分析图
+
 如果希望在 Python 中直接调用，也可以使用：
 
 ```python
@@ -387,3 +395,46 @@ result = export_final_delivery_bundle(
     reference_label="COMSOL",
 )
 ```
+
+## 10. 高级减反专题总包
+
+当前仓库已支持一个独立的“高级减反专题”总包，用于并列展示：
+
+1. 单层减反膜
+2. 多孔二氧化硅膜层
+3. 蛾眼结构（等效渐变层）
+4. 2D 蛾眼梯形结构 COMSOL 参考曲线
+
+命令行入口：
+
+```powershell
+C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_advanced_ar_bundle.py `
+  --single-ar-csv "C:\Users\L2791\OneDrive\Desktop\deg.p\AR_MgF2_BK7G18_550nm_theta0.csv" `
+  --porous-csv "C:\Users\L2791\OneDrive\Desktop\deg.p\porous.csv" `
+  --moth-eye-effective-csv "C:\Users\L2791\OneDrive\Desktop\deg.p\Rugate2.csv" `
+  --moth-eye-2d-csv "C:\Users\L2791\OneDrive\Desktop\deg.p\moth_eye_2D_trapezoid_P200_H300_Wtop40_Wbottom180_Glass_550nm_theta0_comsol.csv" `
+  --prefix advanced_ar_topic_v1
+```
+
+Python 入口：
+
+```python
+from pathlib import Path
+from thinfilm import export_advanced_ar_topic_bundle
+
+result = export_advanced_ar_topic_bundle(
+    single_ar_csv=Path(r"C:\Users\L2791\OneDrive\Desktop\deg.p\AR_MgF2_BK7G18_550nm_theta0.csv"),
+    porous_csv=Path(r"C:\Users\L2791\OneDrive\Desktop\deg.p\porous.csv"),
+    moth_eye_effective_csv=Path(r"C:\Users\L2791\OneDrive\Desktop\deg.p\Rugate2.csv"),
+    moth_eye_2d_csv=Path(r"C:\Users\L2791\OneDrive\Desktop\deg.p\moth_eye_2D_trapezoid_P200_H300_Wtop40_Wbottom180_Glass_550nm_theta0_comsol.csv"),
+    prefix="advanced_ar_topic_v1",
+    reference_label="COMSOL",
+)
+```
+
+该总包会自动导出：
+
+- 四个主题的单独理论对照结果
+- 专题总览图
+- 综合摘要 CSV / JSON / TXT
+- Manifest 清单

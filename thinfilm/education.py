@@ -82,6 +82,38 @@ REPORT_CHAPTER2_CASES: Dict[str, Dict[str, Any]] = {
             "n_low": 1.2329,
         },
     },
+    "porous_sio2_layer": {
+        "title_cn": "多孔二氧化硅膜层",
+        "title_en": "Porous Silica Layer",
+        "design_type": "single_ar",
+        "default_params": {
+            "theta_deg": 0.0,
+            "pol": "p",
+            "lambda0_nm": 550.0,
+            "n_incident": 1.0,
+            "n_substrate": 1.52,
+            "n_low": 1.32,
+        },
+    },
+    "moth_eye_effective_gradient": {
+        "title_cn": "蛾眼结构（等效渐变层）",
+        "title_en": "Moth-Eye Effective Gradient",
+        "design_type": "moth_eye_effective_gradient",
+        "default_params": {
+            "theta_deg": 0.0,
+            "pol": "p",
+            "lambda0_nm": 550.0,
+            "n_incident": 1.0,
+            "n_substrate": 1.5215,
+            "n_top": 1.10,
+            "n_bottom": 1.50,
+            "d_total_nm": 300.0,
+            "num_gradient_layers": 5,
+            "gradient_type": "linear",
+            "layer_indices": [1.10, 1.20, 1.30, 1.40, 1.50],
+            "layer_thickness_nm": [60.0, 60.0, 60.0, 60.0, 60.0],
+        },
+    },
     "double_ar": {
         "title_cn": "双层减反射膜",
         "title_en": "Double-Layer Anti-Reflection",
@@ -425,7 +457,7 @@ REPORT_MAIN_BRANCH_SECTIONS: List[Dict[str, Any]] = [
         "title_en": "Uniform Layer Basics",
         "summary_cn": "从1/4波长与1/2波长单层出发，逐步建立光学厚度与相位干涉的基础认识。",
         "summary_en": "Start from quarter-wave and half-wave single layers to build intuition for optical thickness and phase interference.",
-        "case_ids": ["quarter_wave_single_layer", "half_wave_single_layer", "single_ar"],
+        "case_ids": ["quarter_wave_single_layer", "half_wave_single_layer", "single_ar", "porous_sio2_layer"],
     },
     {
         "section_id": "ar_coatings",
@@ -433,7 +465,7 @@ REPORT_MAIN_BRANCH_SECTIONS: List[Dict[str, Any]] = [
         "title_en": "Anti-Reflection Coatings",
         "summary_cn": "从单层到三层，逐步展示减反膜带宽与匹配能力的提升。",
         "summary_en": "From single-layer to triple-layer designs, showing how AR bandwidth and matching improve.",
-        "case_ids": ["double_ar", "quarter_wave_double_layer", "triple_ar"],
+        "case_ids": ["porous_sio2_layer", "moth_eye_effective_gradient", "double_ar", "quarter_wave_double_layer", "triple_ar"],
     },
     {
         "section_id": "periodic_stacks",
@@ -670,6 +702,24 @@ REPORT_CASE_UI_META: Dict[str, Dict[str, str]] = {
         "card_tag_en": "Core Case",
         "main_curve": "R",
     },
+    "porous_sio2_layer": {
+        "summary_cn": "采用等效低折射率近似的多孔二氧化硅膜层，用于展示多孔材料作为减反匹配层的基本行为。",
+        "summary_en": "A porous silica layer treated as an effective low-index coating, showing its anti-reflection matching behavior.",
+        "headline_cn": "多孔二氧化硅减反层",
+        "headline_en": "Porous Silica AR Layer",
+        "card_tag_cn": "多孔材料",
+        "card_tag_en": "Porous Material",
+        "main_curve": "R",
+    },
+    "moth_eye_effective_gradient": {
+        "summary_cn": "采用离散等效渐变折射率层近似的蛾眼减反结构，用于展示渐变界面如何降低反射。",
+        "summary_en": "A moth-eye anti-reflection structure approximated by discrete effective gradient-index layers.",
+        "headline_cn": "蛾眼等效渐变层",
+        "headline_en": "Moth-Eye Gradient Layer",
+        "card_tag_cn": "表面结构",
+        "card_tag_en": "Surface Structure",
+        "main_curve": "R",
+    },
     "double_ar": {
         "summary_cn": "双层减反膜，用于展示比单层更宽的低反射工作带。",
         "summary_en": "Double-layer AR coating showing a broader low-reflection band than the single-layer case.",
@@ -784,6 +834,8 @@ REPORT_CASE_DISPLAY_ORDER: List[str] = [
     "quarter_wave_single_layer",
     "half_wave_single_layer",
     "single_ar",
+    "porous_sio2_layer",
+    "moth_eye_effective_gradient",
     "double_ar",
     "quarter_wave_double_layer",
     "triple_ar",
@@ -1064,6 +1116,42 @@ def build_rugate_filter_layers(
     return layers
 
 
+def build_moth_eye_effective_gradient_layers(
+    n_top: complex,
+    n_bottom: complex,
+    d_total_nm: float,
+    num_gradient_layers: int,
+    gradient_type: str = "linear",
+    layer_indices: Sequence[float] | None = None,
+    layer_thickness_nm: Sequence[float] | None = None,
+) -> List[LayerSpec]:
+    num_gradient_layers = max(int(num_gradient_layers), 1)
+
+    if layer_indices is not None:
+        n_values = [complex(float(v), 0.0) for v in layer_indices]
+        num_gradient_layers = len(n_values)
+    else:
+        if str(gradient_type).strip().lower() != "linear":
+            raise ValueError("Only linear gradient_type is currently supported.")
+        n_values = [
+            n_top + (n_bottom - n_top) * (idx / max(num_gradient_layers - 1, 1))
+            for idx in range(num_gradient_layers)
+        ]
+
+    if layer_thickness_nm is not None:
+        thickness_values = [float(v) for v in layer_thickness_nm]
+        if len(thickness_values) != num_gradient_layers:
+            raise ValueError("layer_thickness_nm length must match the number of gradient layers.")
+    else:
+        dz_nm = float(d_total_nm) / float(num_gradient_layers)
+        thickness_values = [dz_nm] * num_gradient_layers
+
+    layers: List[LayerSpec] = []
+    for idx, (n_value, thickness_nm) in enumerate(zip(n_values, thickness_values), start=1):
+        layers.append(LayerSpec(f"ME{idx}", n_value, float(thickness_nm)))
+    return layers
+
+
 def describe_layers(layers: Sequence[LayerSpec]) -> List[Dict[str, Any]]:
     return [
         {
@@ -1219,6 +1307,13 @@ def simulate_report_design(
     periods: int = 3,
     slices_per_period: int | None = None,
     total_layers: int | None = None,
+    n_top: float = 1.10,
+    n_bottom: float = 1.50,
+    d_total_nm: float = 300.0,
+    num_gradient_layers: int = 5,
+    gradient_type: str = "linear",
+    layer_indices: Sequence[float] | None = None,
+    layer_thickness_nm: Sequence[float] | None = None,
     fp_spacer_kind: str = "L",
     beamsplitter_front_halfwave_low: bool = False,
 ) -> Dict[str, Any]:
@@ -1233,6 +1328,8 @@ def simulate_report_design(
     nm = _to_complex_index(n_mid, k_mid)
     nh = _to_complex_index(n_high, k_high)
     nh2 = _to_complex_index(n_high_2, k_high_2)
+    ntop = _to_complex_index(n_top, 0.0)
+    nbottom = _to_complex_index(n_bottom, 0.0)
 
     key = str(design_type).strip().lower()
     if key in {"quarter_wave_single_layer", "qw_single_layer"}:
@@ -1251,6 +1348,16 @@ def simulate_report_design(
         layers = build_fp_single_halfwave_layers(lambda0_nm, nh2, nl, periods, spacer_kind=fp_spacer_kind)
     elif key in {"fp_double_halfwave", "fp_dhw"}:
         layers = build_fp_double_halfwave_layers(lambda0_nm, nh2, nl, periods)
+    elif key in {"moth_eye_effective_gradient", "moth_eye_gradient", "moth_eye"}:
+        layers = build_moth_eye_effective_gradient_layers(
+            ntop,
+            nbottom,
+            d_total_nm=float(d_total_nm),
+            num_gradient_layers=int(num_gradient_layers),
+            gradient_type=gradient_type,
+            layer_indices=layer_indices,
+            layer_thickness_nm=layer_thickness_nm,
+        )
     elif key in {"rugate_filter", "rugate"}:
         effective_slices_per_period = slices_per_period
         if effective_slices_per_period is None and total_layers is not None:

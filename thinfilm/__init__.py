@@ -1,6 +1,11 @@
 """Thin-film teaching and validation package."""
 
 from .api import (
+    analyze_absorbing_surface,
+    build_advanced_ar_cases,
+    export_absorbing_surface_bundle,
+    export_absorbing_surface_roughness_trend,
+    export_advanced_ar_topic_bundle,
     build_teaching_expansion_validation_cases,
     export_teaching_case_outputs,
     export_teaching_main_branch_catalog,
@@ -17,6 +22,7 @@ from .api import (
     simulate_teaching_case,
     simulate_teaching_design,
     simulate_teaching_suite,
+    summarize_absorbing_surface_roughness_trend,
 )
 from .education import (
     LayerSpec,
@@ -82,10 +88,15 @@ from .sensitivity import (
     summarize_sensitivity_stability,
 )
 from .validation import (
+    analyze_quasi_random_absorbing_surface,
+    export_absorbing_surface_roughness_bundle,
+    build_advanced_ar_validation_cases,
     build_teaching_expansion_validation_cases_from_mapping,
     build_teaching_expansion_validation_templates,
     build_standard_teaching_validation_cases,
     compare_teaching_case_to_reference,
+    export_advanced_ar_bundle,
+    export_quasi_random_absorbing_surface_bundle,
     export_teaching_expansion_validation_bundle_from_file,
     export_teaching_expansion_validation_bundle_from_mapping,
     export_teaching_expansion_validation_template_bundle,
@@ -97,6 +108,7 @@ from .validation import (
     load_teaching_expansion_validation_mapping,
     run_standard_teaching_validation_suite,
     run_teaching_validation_suite,
+    summarize_absorbing_surface_roughness,
 )
 
 __all__ = [
@@ -113,14 +125,24 @@ __all__ = [
     "build_neutral_beamsplitter_layers",
     "export_rugate_comsol_layer_table",
     "build_teaching_expansion_validation_cases",
+    "build_advanced_ar_cases",
+    "build_advanced_ar_validation_cases",
     "build_teaching_expansion_validation_templates",
     "build_teaching_expansion_validation_cases_from_mapping",
     "build_standard_teaching_validation_cases",
     "analyze_reference_noise",
     "analyze_reference_resolution",
+    "analyze_absorbing_surface",
+    "analyze_quasi_random_absorbing_surface",
     "analyze_theoretical_angle_sensitivity",
     "analyze_theoretical_thickness_sensitivity",
     "compare_teaching_case_to_reference",
+    "export_advanced_ar_bundle",
+    "export_advanced_ar_topic_bundle",
+    "export_absorbing_surface_bundle",
+    "export_absorbing_surface_roughness_bundle",
+    "export_absorbing_surface_roughness_trend",
+    "export_quasi_random_absorbing_surface_bundle",
     "describe_layers",
     "export_candidate_case_ranking",
     "export_angle_sensitivity_analysis",
@@ -185,6 +207,8 @@ __all__ = [
     "simulate_teaching_case",
     "simulate_teaching_design",
     "simulate_teaching_suite",
+    "summarize_absorbing_surface_roughness",
+    "summarize_absorbing_surface_roughness_trend",
     "summarize_performance_conclusions",
     "summarize_layerwise_thickness_sensitivity",
     "summarize_overall_performance_table",
