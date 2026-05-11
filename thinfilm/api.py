@@ -22,7 +22,10 @@ from .roadmap import (
 )
 from .validation import (
     analyze_quasi_random_absorbing_surface,
+    analyze_absorbing_surface_gain_against_baseline,
     export_absorbing_surface_roughness_bundle,
+    export_absorbing_surface_baseline_template,
+    export_absorbing_surface_gain_bundle,
     build_advanced_ar_validation_cases,
     build_teaching_expansion_validation_cases_from_mapping,
     build_teaching_expansion_validation_templates,
@@ -193,6 +196,39 @@ def export_absorbing_surface_bundle(
 ) -> Dict[str, str]:
     """Export plots and summaries for a quasi-random rough absorbing surface."""
     return export_quasi_random_absorbing_surface_bundle(reference_csv=reference_csv, **kwargs)
+
+
+def export_absorbing_surface_baseline_reference_template(
+    **kwargs: Any,
+) -> Dict[str, str]:
+    """Export a template describing the planar baseline CSV needed for gain analysis."""
+    return export_absorbing_surface_baseline_template(**kwargs)
+
+
+def analyze_absorbing_surface_gain(
+    rough_csv: str,
+    baseline_csv: str,
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    """Analyze the absorption gain of a rough surface against a planar baseline."""
+    return analyze_absorbing_surface_gain_against_baseline(
+        rough_csv=rough_csv,
+        baseline_csv=baseline_csv,
+        **kwargs,
+    )
+
+
+def export_absorbing_surface_gain_analysis(
+    rough_csv: str,
+    baseline_csv: str,
+    **kwargs: Any,
+) -> Dict[str, str]:
+    """Export gain analysis files for rough surface versus planar baseline."""
+    return export_absorbing_surface_gain_bundle(
+        rough_csv=rough_csv,
+        baseline_csv=baseline_csv,
+        **kwargs,
+    )
 
 
 def summarize_absorbing_surface_roughness_trend(

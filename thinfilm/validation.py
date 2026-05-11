@@ -2067,3 +2067,321 @@ def export_absorbing_surface_roughness_bundle(
         f.write("\n".join(lines) + "\n")
     saved["conclusion_txt"] = str(summary_txt)
     return saved
+
+
+def export_absorbing_surface_baseline_template(
+    *,
+    prefix: str = "rough_absorbing_surface_planar_baseline_template",
+    lambda0_nm: float = 550.0,
+) -> Dict[str, str]:
+    """Export a template describing the planar baseline CSV needed for gain analysis."""
+
+    template = {
+        "case_id": "planar_absorbing_surface_baseline",
+        "title_cn": "平面吸收表面基准",
+        "purpose_cn": "用于与粗糙吸收表面进行对照，量化吸收增强增益。",
+        "reference_csv": "",
+        "lambda0_nm": float(lambda0_nm),
+        "recommended_geometry_cn": "同材料、同厚度、无粗糙结构的平面基准表面",
+        "recommended_columns": [
+            "lam/1[nm] (1)",
+            "abs(ewfd.S11)^2 (1)",
+            "abs(ewfd.S21)^2 (1)",
+            "1-abs(ewfd.S11)^2-abs(ewfd.S21)^2 (1)",
+        ],
+        "recommended_selectors": {
+            "x_selector": "lam/1[nm] (1)",
+            "r_selector": "abs(ewfd.S11)^2 (1)",
+            "t_selector": "abs(ewfd.S21)^2 (1)",
+            "a_selector": "1-abs(ewfd.S11)^2-abs(ewfd.S21)^2 (1)",
+        },
+        "notes_cn": [
+            "请保持材料参数、总厚度、波长范围与粗糙版本一致。",
+            "唯一变化应为表面不再引入粗糙结构。",
+            "后续将对比平均吸收率、550 nm 吸收率以及反射/透射变化。",
+        ],
+    }
+
+    saved: Dict[str, str] = {}
+    json_path = output_file(f"{prefix}.json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(template, f, ensure_ascii=False, indent=2)
+    saved["json"] = str(json_path)
+
+    txt_path = output_file(f"{prefix}.txt")
+    lines = [
+        "平面吸收表面基准模板",
+        "=" * 80,
+        f"case_id             = {template['case_id']}",
+        f"title_cn            = {template['title_cn']}",
+        f"lambda0_nm          = {float(template['lambda0_nm']):.6f}",
+        f"reference_csv       = {template['reference_csv'] or '<请填写平面基准CSV路径>'}",
+        "",
+        f"recommended_geometry = {template['recommended_geometry_cn']}",
+        "recommended_columns =",
+    ]
+    lines.extend(f"  - {item}" for item in template["recommended_columns"])
+    lines.extend(
+        [
+            "",
+            "recommended_selectors =",
+            f"  x_selector = {template['recommended_selectors']['x_selector']}",
+            f"  r_selector = {template['recommended_selectors']['r_selector']}",
+            f"  t_selector = {template['recommended_selectors']['t_selector']}",
+            f"  a_selector = {template['recommended_selectors']['a_selector']}",
+            "",
+            "notes_cn =",
+        ]
+    )
+    lines.extend(f"  - {item}" for item in template["notes_cn"])
+    with open(txt_path, "w", encoding="utf-8-sig") as f:
+        f.write("\n".join(lines) + "\n")
+    saved["txt"] = str(txt_path)
+    return saved
+
+
+def analyze_absorbing_surface_gain_against_baseline(
+    rough_csv: Path | str,
+    baseline_csv: Path | str,
+    *,
+    lambda0_nm: float = 550.0,
+    rough_label: str = "粗糙表面",
+    baseline_label: str = "平面基准",
+    x_selector: int | str = "lam/1[nm] (1)",
+    r_selector: int | str = "abs(ewfd.S11)^2 (1)",
+    t_selector: int | str = "abs(ewfd.S21)^2 (1)",
+    a_selector: int | str = "1-abs(ewfd.S11)^2-abs(ewfd.S21)^2 (1)",
+) -> Dict[str, Any]:
+    """Compare a rough absorbing surface against a planar baseline surface."""
+
+    rough = analyze_quasi_random_absorbing_surface(
+        rough_csv,
+        lambda0_nm=lambda0_nm,
+        x_selector=x_selector,
+        r_selector=r_selector,
+        t_selector=t_selector,
+        a_selector=a_selector,
+    )
+    baseline = analyze_quasi_random_absorbing_surface(
+        baseline_csv,
+        lambda0_nm=lambda0_nm,
+        x_selector=x_selector,
+        r_selector=r_selector,
+        t_selector=t_selector,
+        a_selector=a_selector,
+    )
+
+    sr = rough["summary"]
+    sb = baseline["summary"]
+    delta_summary = {
+        "delta_R_mean": float(sr["R_mean"] - sb["R_mean"]),
+        "delta_T_mean": float(sr["T_mean"] - sb["T_mean"]),
+        "delta_A_mean": float(sr["A_mean"] - sb["A_mean"]),
+        "delta_R_at_lambda0": float(sr["R_at_lambda0"] - sb["R_at_lambda0"]),
+        "delta_T_at_lambda0": float(sr["T_at_lambda0"] - sb["T_at_lambda0"]),
+        "delta_A_at_lambda0": float(sr["A_at_lambda0"] - sb["A_at_lambda0"]),
+        "rough_to_baseline_A_mean_ratio": (
+            float(sr["A_mean"] / sb["A_mean"]) if float(sb["A_mean"]) != 0.0 else None
+        ),
+        "rough_to_baseline_A_at_lambda0_ratio": (
+            float(sr["A_at_lambda0"] / sb["A_at_lambda0"]) if float(sb["A_at_lambda0"]) != 0.0 else None
+        ),
+    }
+
+    if delta_summary["delta_A_mean"] > 0 and delta_summary["delta_A_at_lambda0"] > 0:
+        interpretation_cn = "相对于平面基准，粗糙表面同时提升了全波段平均吸收率和 550 nm 吸收率。"
+    elif delta_summary["delta_A_mean"] > 0:
+        interpretation_cn = "相对于平面基准，粗糙表面提升了平均吸收率，但中心波长处增益有限。"
+    else:
+        interpretation_cn = "相对于平面基准，当前粗糙表面未带来吸收增益，建议回到几何参数继续优化。"
+
+    return {
+        "case_id": "rough_absorbing_surface_gain_against_baseline",
+        "title_cn": "粗糙吸收表面相对平面基准的吸收增益",
+        "lambda0_nm": float(lambda0_nm),
+        "rough_label": rough_label,
+        "baseline_label": baseline_label,
+        "rough": rough,
+        "baseline": baseline,
+        "delta_summary": delta_summary,
+        "interpretation_cn": interpretation_cn,
+    }
+
+
+def export_absorbing_surface_gain_bundle(
+    rough_csv: Path | str,
+    baseline_csv: Path | str,
+    *,
+    prefix: str = "rough_absorbing_surface_gain",
+    lambda0_nm: float = 550.0,
+    rough_label: str = "粗糙表面",
+    baseline_label: str = "平面基准",
+) -> Dict[str, str]:
+    """Export gain analysis files comparing rough absorbing surface to planar baseline."""
+
+    result = analyze_absorbing_surface_gain_against_baseline(
+        rough_csv=rough_csv,
+        baseline_csv=baseline_csv,
+        lambda0_nm=lambda0_nm,
+        rough_label=rough_label,
+        baseline_label=baseline_label,
+    )
+    rough = result["rough"]
+    baseline = result["baseline"]
+    sr = rough["summary"]
+    sb = baseline["summary"]
+    delta = result["delta_summary"]
+
+    wl_r = np.asarray(rough["wavelength_nm"], dtype=float)
+    wl_b = np.asarray(baseline["wavelength_nm"], dtype=float)
+    a_r = np.asarray(rough["A"], dtype=float)
+    a_b = np.asarray(baseline["A"], dtype=float)
+    r_r = np.asarray(rough["R"], dtype=float)
+    r_b = np.asarray(baseline["R"], dtype=float)
+    t_r = np.asarray(rough["T"], dtype=float)
+    t_b = np.asarray(baseline["T"], dtype=float)
+
+    saved: Dict[str, str] = {}
+
+    csv_path = output_file(f"{prefix}.csv")
+    with open(csv_path, "w", encoding="utf-8-sig") as f:
+        f.write("metric,baseline,rough,delta_rough_minus_baseline\n")
+        for metric in [
+            "R_mean",
+            "T_mean",
+            "A_mean",
+            "R_at_lambda0",
+            "T_at_lambda0",
+            "A_at_lambda0",
+        ]:
+            vb = float(sb[metric])
+            vr = float(sr[metric])
+            f.write(f"{metric},{vb:.12g},{vr:.12g},{(vr-vb):.12g}\n")
+    saved["csv"] = str(csv_path)
+
+    json_path = output_file(f"{prefix}.json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "case_id": result["case_id"],
+                "title_cn": result["title_cn"],
+                "lambda0_nm": result["lambda0_nm"],
+                "rough_csv": str(rough_csv),
+                "baseline_csv": str(baseline_csv),
+                "rough_label": rough_label,
+                "baseline_label": baseline_label,
+                "rough_summary": sr,
+                "baseline_summary": sb,
+                "delta_summary": delta,
+                "interpretation_cn": result["interpretation_cn"],
+            },
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
+    saved["json"] = str(json_path)
+
+    txt_path = output_file(f"{prefix}.txt")
+    lines = [
+        "粗糙吸收表面相对平面基准的吸收增益分析",
+        "=" * 80,
+        f"baseline_csv                = {baseline_csv}",
+        f"rough_csv                   = {rough_csv}",
+        f"lambda0_nm                  = {float(result['lambda0_nm']):.6f}",
+        "",
+        f"baseline_A_mean             = {float(sb['A_mean']):.12e}",
+        f"rough_A_mean                = {float(sr['A_mean']):.12e}",
+        f"delta_A_mean                = {float(delta['delta_A_mean']):+.12e}",
+        f"baseline_A_at_lambda0       = {float(sb['A_at_lambda0']):.12e}",
+        f"rough_A_at_lambda0          = {float(sr['A_at_lambda0']):.12e}",
+        f"delta_A_at_lambda0          = {float(delta['delta_A_at_lambda0']):+.12e}",
+        f"delta_R_mean                = {float(delta['delta_R_mean']):+.12e}",
+        f"delta_T_mean                = {float(delta['delta_T_mean']):+.12e}",
+        "",
+        f"interpretation_cn           = {result['interpretation_cn']}",
+    ]
+    with open(txt_path, "w", encoding="utf-8-sig") as f:
+        f.write("\n".join(lines) + "\n")
+    saved["txt"] = str(txt_path)
+
+    fig, axes = plt.subplots(2, 2, figsize=(13, 9), constrained_layout=True)
+    font = _cn_font()
+
+    ax = axes[0, 0]
+    ax.plot(wl_b, a_b, color=REF_BLUE, linewidth=2.2, label=f"{baseline_label} 吸收率 A")
+    ax.plot(wl_r, a_r, color=TARGET_GREEN, linewidth=2.4, label=f"{rough_label} 吸收率 A")
+    _style_axis(ax)
+    _set_axis_labels_cn(ax, title="吸收率光谱对比", xlabel="波长 (nm)", ylabel="吸收率 A")
+    ax.legend(prop=font, frameon=False, loc="best")
+
+    ax = axes[0, 1]
+    ax.plot(wl_b, r_b, color=MAIN_RED, linewidth=2.0, label=f"{baseline_label} 反射率 R")
+    ax.plot(wl_r, r_r, color="#d97706", linewidth=2.0, linestyle="--", label=f"{rough_label} 反射率 R")
+    ax.plot(wl_b, t_b, color=REF_BLUE, linewidth=1.8, alpha=0.75, label=f"{baseline_label} 透射率 T")
+    ax.plot(wl_r, t_r, color="#5b21b6", linewidth=1.8, linestyle="--", alpha=0.75, label=f"{rough_label} 透射率 T")
+    _style_axis(ax)
+    _set_axis_labels_cn(ax, title="反射/透射变化", xlabel="波长 (nm)", ylabel="比例")
+    ax.legend(prop=font, frameon=False, loc="best")
+
+    ax = axes[1, 0]
+    labels = ["A@550", "平均A"]
+    x = np.arange(len(labels))
+    width = 0.35
+    vals_b = [float(sb["A_at_lambda0"]), float(sb["A_mean"])]
+    vals_r = [float(sr["A_at_lambda0"]), float(sr["A_mean"])]
+    bars_b = ax.bar(x - width / 2, vals_b, width=width, color=REF_BLUE, label=baseline_label)
+    bars_r = ax.bar(x + width / 2, vals_r, width=width, color=TARGET_GREEN, label=rough_label)
+    ax.set_xticks(x)
+    if font is None:
+        ax.set_xticklabels(labels)
+    else:
+        ax.set_xticklabels(labels, fontproperties=font)
+    for bars in (bars_b, bars_r):
+        for bar in bars:
+            value = float(bar.get_height())
+            ax.text(
+                bar.get_x() + bar.get_width() / 2.0,
+                value + max(vals_b + vals_r) * 0.03,
+                f"{value:.4f}",
+                ha="center",
+                va="bottom",
+                fontsize=9,
+                color=TEXT_DARK,
+            )
+    _style_axis(ax)
+    _set_axis_labels_cn(ax, title="吸收增益关键指标", xlabel="指标", ylabel="比例")
+    ax.legend(prop=font, frameon=False, loc="best")
+
+    ax = axes[1, 1]
+    delta_labels = ["Δ平均R", "Δ平均T", "Δ平均A", "ΔA@550"]
+    delta_vals = [
+        float(delta["delta_R_mean"]),
+        float(delta["delta_T_mean"]),
+        float(delta["delta_A_mean"]),
+        float(delta["delta_A_at_lambda0"]),
+    ]
+    bars = ax.bar(np.arange(len(delta_labels)), delta_vals, color=[MAIN_RED, REF_BLUE, TARGET_GREEN, TARGET_GREEN])
+    ax.axhline(0.0, color="#7a8696", linewidth=1.0)
+    ax.set_xticks(np.arange(len(delta_labels)))
+    if font is None:
+        ax.set_xticklabels(delta_labels)
+    else:
+        ax.set_xticklabels(delta_labels, fontproperties=font)
+    for bar, value in zip(bars, delta_vals):
+        ax.text(
+            bar.get_x() + bar.get_width() / 2.0,
+            value + (0.004 if value >= 0 else -0.006),
+            f"{value:+.4f}",
+            ha="center",
+            va="bottom" if value >= 0 else "top",
+            fontsize=9,
+            color=TEXT_DARK,
+        )
+    _style_axis(ax)
+    _set_axis_labels_cn(ax, title="粗糙表面相对平面基准的变化", xlabel="指标", ylabel="差值")
+
+    png_path = output_file(f"{prefix}.png")
+    fig.savefig(png_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    saved["png"] = str(png_path)
+    return saved

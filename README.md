@@ -71,20 +71,22 @@ guided_grating/examples.py
 
 底层方法为传输矩阵法 / 特征矩阵法，不依赖 COMSOL 即可快速生成 `R / T / A` 曲线。
 
-### 3.1.1 ??????
+### 3.1.1 扩展案例
 
-????????????????????????
+除了基础教学案例外，当前主树还补充了一组更适合做专题展示和后续验证的扩展案例：
 
-1. `quarter_wave_single_layer`?1/4?????
-2. `half_wave_single_layer`?1/2?????
-3. `quarter_wave_double_layer`?1/4??????
-4. `quarter_wave_stack`?1/4?? QW ??
-5. `bragg_reflector`???????
-6. `fp_filter`??? F-P ???
-7. `narrowband_filter`??????
-8. `rugate_filter`??????
+1. `quarter_wave_single_layer`：`1/4` 波长单层膜
+2. `half_wave_single_layer`：`1/2` 波长单层膜
+3. `quarter_wave_double_layer`：`1/4` 波长双层膜系
+4. `quarter_wave_stack`：`1/4` 波长 QW 膜堆
+5. `bragg_reflector`：布拉格反射镜
+6. `fp_filter`：标准 F-P 滤光片
+7. `narrowband_filter`：窄带滤光片
+8. `rugate_filter`：皱褶滤光片
+9. `porous_sio2_layer`：多孔二氧化硅膜层
+10. `moth_eye_effective_gradient`：蛾眼结构（等效渐变层）
 
-??????????
+当前还配套提供了扩展案例对比图：
 
 - `quarter_wave_stack_periods`
 - `narrowband_filter_periods`
@@ -149,28 +151,27 @@ teaching_compare_*_analysis.png
 teaching_main_branch_catalog.json
 ```
 
-### 3.4 ????????
+### 3.4 扩展案例验证模板
 
-### 3.4.1 ???????????
+### 3.4.1 生成扩展案例验证模板
 
-??????
-
-```powershell
-C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .un_teaching_expansion_validation.py --template-out --prefix teaching_expansion_validation_cli
-```
-
-????? `reference_csv` ???????????
+导出模板：
 
 ```powershell
-C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .un_teaching_expansion_validation.py --template-file "C:\path	oilled_template.json" --prefix teaching_expansion_validation_run
+C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_teaching_expansion_validation.py --template-out --prefix teaching_expansion_validation_cli
 ```
 
-???? `.json` ? `.csv` ?????
+填写模板中的 `reference_csv` 等字段后，可以直接运行：
 
+```powershell
+C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\run_teaching_expansion_validation.py --template-file "C:\path\to\filled_template.json" --prefix teaching_expansion_validation_run
+```
 
-??????????????? COMSOL ?????????????????????????????
+模板支持 `.json` 或 `.csv` 两种格式。
 
-??????
+这套模板的作用是先把“理论案例”和“未来会接入的 COMSOL 参考曲线”之间的映射关系固定下来。
+
+推荐接口：
 
 ```python
 from thinfilm import (
@@ -179,14 +180,14 @@ from thinfilm import (
 )
 ```
 
-???????????????
+模板里会预生成这些信息：
 
-- ????? `R / T`
-- ?? CSV ??????? `R (1)` ? `T (1)`
-- ?????????
-- ???? COMSOL / ??????????
+- 推荐比较量 `R / T`
+- 建议 CSV 主列选择器，如 `R (1)` 或 `T (1)`
+- 默认参数覆盖项
+- 未来 COMSOL / 实验曲线的接入占位
 
-?????
+当前支持：
 
 - `quarter_wave_single_layer`
 - `half_wave_single_layer`
@@ -196,8 +197,10 @@ from thinfilm import (
 - `fp_filter`
 - `narrowband_filter`
 - `rugate_filter`
+- `porous_sio2_layer`
+- `moth_eye_effective_gradient`
 
-????????
+导出模板示例：
 
 ```python
 from thinfilm import export_teaching_expansion_validation_template_bundle
