@@ -32,6 +32,7 @@ thinfilm/                    教学主树、通用 CSV 读取、验证模块
 guided_grating/              光栅波导研究支线
 run_teaching_demo.py         教学主树命令行入口
 run_guided_grating_demo.py   光栅波导支线命令行入口
+smoke_test.py                最小导入与演示命令体检
 data/                        主路径说明目录
 ```
 
@@ -56,6 +57,16 @@ guided_grating/examples.py
 ```
 
 ## 3. 教学仿真主树
+
+### 3.0 最小体检
+
+合并代码或准备展示前，建议先运行：
+
+```powershell
+C:/Users/L2791/AppData/Local/Programs/Python/Python313/python.exe .\smoke_test.py
+```
+
+它会检查 `thinfilm` 与 `guided_grating` 的导入，并跑通教学主树和光栅波导支线的最小命令。
 
 ### 3.1 目标
 
