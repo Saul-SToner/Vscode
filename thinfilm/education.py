@@ -1209,6 +1209,442 @@ def describe_layers(layers: Sequence[LayerSpec]) -> List[Dict[str, Any]]:
     ]
 
 
+def _pdrc_sio2_index(lambda_um: float) -> complex:
+    """First-pass effective SiO2 index for PDRC spectral screening.
+
+    This is a compact teaching/research surrogate, not a replacement for
+    measured optical-constant data.  It keeps the solar band nearly lossless
+    and adds broad phonon absorption inside the 8-13 um atmospheric window.
+    """
+    lam = float(lambda_um)
+    n_val = 1.46 + 0.012 * np.exp(-((lam - 9.5) / 3.0) ** 2)
+    if lam < 2.5:
+        k_val = 0.0
+    else:
+        k_val = (
+            0.010
+            + 0.090 * np.exp(-((lam - 9.3) / 1.25) ** 2)
+            + 0.065 * np.exp(-((lam - 12.2) / 1.15) ** 2)
+        )
+    # This characteristic-matrix implementation uses n - i*k for passive loss.
+    return complex(float(n_val), -float(k_val))
+
+
+def _pdrc_tio2_index(lambda_um: float) -> complex:
+    """Simple low-loss TiO2 dispersion surrogate for first-pass PDRC scans."""
+    lam = max(float(lambda_um), 0.25)
+    n_val = 2.28 + 0.10 / (lam ** 1.2 + 0.25)
+    k_val = 0.002 if lam < 0.38 else 0.0
+    return complex(float(n_val), -float(k_val))
+
+
+def _pdrc_ag_index(lambda_um: float) -> complex:
+    """Compact Ag mirror surrogate for wideband screening."""
+    lam = float(lambda_um)
+    n_real = 0.12 + 0.020 * min(lam, 13.0)
+    k_imag = 3.2 + 0.90 * np.sqrt(max(lam, 0.3))
+    return complex(float(n_real), -float(k_imag))
+
+
+def _pdrc_substrate_index(lambda_um: float) -> complex:
+    lam = float(lambda_um)
+    n_val = 1.52 + 0.015 * np.exp(-((lam - 9.0) / 3.5) ** 2)
+    k_val = 0.0 if lam < 7.0 else 0.015
+    return complex(float(n_val), -float(k_val))
+
+
+def _pdrc_material_index(material: str, lambda_um: float) -> complex:
+    key = str(material).strip().lower()
+    if key in {"sio2", "silica", "二氧化硅"}:
+        return _pdrc_sio2_index(lambda_um)
+    if key in {"tio2", "titania", "二氧化钛"}:
+        return _pdrc_tio2_index(lambda_um)
+    if key in {"ag", "silver", "银"}:
+        return _pdrc_ag_index(lambda_um)
+    if key in {"substrate", "glass", "基底", "玻璃"}:
+        return _pdrc_substrate_index(lambda_um)
+    if key in {"air", "空气"}:
+        return 1.0 + 0.0j
+    raise ValueError(f"Unsupported PDRC material: {material}")
+
+
+def build_pdrc_multilayer_stack(
+    *,
+    variant: str = "full",
+    ag_thickness_nm: float = 500.0,
+) -> List[Dict[str, Any]]:
+    """Build the first PDRC stack definition used by the wideband TMM model.
+
+    The layer order is from incident air toward the substrate.
+    """
+    key = str(variant).strip().lower()
+    if key in {"simple", "basic", "first"}:
+        layers = [
+            ("SiO2_1", "SiO2", 1200.0),
+            ("TiO2_1", "TiO2", 80.0),
+            ("SiO2_3", "SiO2", 1000.0),
+            ("Ag", "Ag", ag_thickness_nm),
+        ]
+    elif key in {"full", "default", "five_dielectric"}:
+        layers = [
+            ("SiO2_1", "SiO2", 1200.0),
+            ("TiO2_1", "TiO2", 80.0),
+            ("SiO2_2", "SiO2", 600.0),
+            ("TiO2_2", "TiO2", 80.0),
+            ("SiO2_3", "SiO2", 1000.0),
+            ("Ag", "Ag", ag_thickness_nm),
+        ]
+    else:
+        raise ValueError("variant must be 'full' or 'simple'.")
+    return [
+        {
+            "name": name,
+            "material": material,
+            "thickness_nm": float(thickness_nm),
+        }
+        for name, material, thickness_nm in layers
+    ]
+
+
+def _multilayer_rt_single_wavelength(
+    *,
+    wavelength_nm: float,
+    layer_indices: Sequence[complex],
+    thicknesses_nm: Sequence[float],
+    n_incident: complex,
+    n_substrate: complex,
+    theta0_deg: float,
+    pol: str,
+) -> Dict[str, complex | float]:
+    n0 = complex(n_incident)
+    ns = complex(n_substrate)
+    theta0_deg = float(theta0_deg)
+    lam_m = float(wavelength_nm) * 1e-9
+
+    cos_theta0 = _cos_theta_in_layer(n0, n0, theta0_deg)
+    cos_thetas = _cos_theta_in_layer(n0, ns, theta0_deg)
+    q0 = _q_admittance(n0, cos_theta0, pol)
+    qs = _q_admittance(ns, cos_thetas, pol)
+    m_total = np.eye(2, dtype=complex)
+
+    for n_layer, thickness_nm in zip(layer_indices, thicknesses_nm):
+        n_complex = complex(n_layer)
+        cos_theta_layer = _cos_theta_in_layer(n0, n_complex, theta0_deg)
+        q_layer = _q_admittance(n_complex, cos_theta_layer, pol)
+        delta = 2.0 * np.pi * n_complex * float(thickness_nm) * 1e-9 * cos_theta_layer / lam_m
+        m_total = m_total @ _layer_matrix(delta, q_layer)
+
+    b_val = m_total[0, 0] + m_total[0, 1] * qs
+    c_val = m_total[1, 0] + m_total[1, 1] * qs
+    y_in = c_val / b_val
+    r = (q0 - y_in) / (q0 + y_in)
+    t = (2.0 * q0) / (q0 * b_val + c_val)
+    r_power = float(np.abs(r) ** 2)
+    t_scale = max(0.0, float(np.real(qs / q0)))
+    t_power = float(max(0.0, np.abs(t) ** 2 * t_scale))
+    a_power = float(np.clip(1.0 - r_power - t_power, 0.0, 1.0))
+    return {
+        "r_complex": r,
+        "t_complex": t,
+        "R": r_power,
+        "T": t_power,
+        "A": a_power,
+    }
+
+
+def _default_pdrc_wavelength_grid_um() -> np.ndarray:
+    solar = np.linspace(0.30, 2.50, 221)
+    mid_ir = np.linspace(2.55, 13.00, 420)
+    return np.unique(np.concatenate([solar, mid_ir])).astype(float)
+
+
+def _pdrc_band_label(lambda_um: float) -> str:
+    lam = float(lambda_um)
+    if 0.3 <= lam <= 2.5:
+        return "solar"
+    if 8.0 <= lam <= 13.0:
+        return "atmospheric_window"
+    return "other"
+
+
+def _band_average(x_values: np.ndarray, y_values: np.ndarray, lower: float, upper: float) -> float:
+    mask = (x_values >= float(lower)) & (x_values <= float(upper))
+    if int(np.count_nonzero(mask)) < 2:
+        return float("nan")
+    return float(np.trapezoid(y_values[mask], x_values[mask]) / (float(upper) - float(lower)))
+
+
+def simulate_pdrc_multilayer_cooling(
+    *,
+    variant: str = "full",
+    wavelengths_um: Sequence[float] | None = None,
+    theta_deg: float = 0.0,
+    pol: str = "p",
+    ag_thickness_nm: float = 500.0,
+) -> Dict[str, Any]:
+    """Simulate a first-pass PDRC multilayer using wideband TMM.
+
+    This module is intentionally separated from the teaching main tree.  It is
+    meant as a fast design-screening entry point before COMSOL representative
+    point validation.
+    """
+    if wavelengths_um is None:
+        lambda_um = _default_pdrc_wavelength_grid_um()
+    else:
+        lambda_um = np.asarray(wavelengths_um, dtype=float).ravel()
+        lambda_um = lambda_um[np.isfinite(lambda_um)]
+        lambda_um = np.unique(lambda_um)
+    if lambda_um.size == 0:
+        raise ValueError("wavelengths_um must contain at least one finite value.")
+
+    stack = build_pdrc_multilayer_stack(variant=variant, ag_thickness_nm=ag_thickness_nm)
+    thicknesses_nm = [float(layer["thickness_nm"]) for layer in stack]
+    r_vals: List[complex] = []
+    t_vals: List[complex] = []
+    r_power: List[float] = []
+    t_power: List[float] = []
+    a_power: List[float] = []
+
+    for lam_um in lambda_um:
+        layer_indices = [
+            _pdrc_material_index(str(layer["material"]), float(lam_um))
+            for layer in stack
+        ]
+        one = _multilayer_rt_single_wavelength(
+            wavelength_nm=float(lam_um) * 1000.0,
+            layer_indices=layer_indices,
+            thicknesses_nm=thicknesses_nm,
+            n_incident=1.0 + 0.0j,
+            n_substrate=_pdrc_substrate_index(float(lam_um)),
+            theta0_deg=float(theta_deg),
+            pol=pol,
+        )
+        r_vals.append(complex(one["r_complex"]))
+        t_vals.append(complex(one["t_complex"]))
+        r_power.append(float(one["R"]))
+        t_power.append(float(one["T"]))
+        a_power.append(float(one["A"]))
+
+    r_arr = np.asarray(r_power, dtype=float)
+    t_arr = np.asarray(t_power, dtype=float)
+    a_arr = np.asarray(a_power, dtype=float)
+    emissivity = a_arr.copy()
+    bands = [_pdrc_band_label(float(lam)) for lam in lambda_um]
+
+    solar_abs = _band_average(lambda_um, a_arr, 0.3, 2.5)
+    solar_ref = _band_average(lambda_um, r_arr, 0.3, 2.5)
+    epsilon_8_13 = _band_average(lambda_um, emissivity, 8.0, 13.0)
+    score = float(epsilon_8_13 - solar_abs)
+
+    representative_wavelengths = np.asarray([0.5, 1.0, 1.5, 8.0, 10.0, 12.0], dtype=float)
+    representative_rows: List[Dict[str, Any]] = []
+    for target in representative_wavelengths:
+        idx = int(np.argmin(np.abs(lambda_um - target)))
+        representative_rows.append(
+            {
+                "lambda_um": float(lambda_um[idx]),
+                "target_lambda_um": float(target),
+                "R": float(r_arr[idx]),
+                "T": float(t_arr[idx]),
+                "A": float(a_arr[idx]),
+                "emissivity": float(emissivity[idx]),
+                "band": bands[idx],
+            }
+        )
+
+    return {
+        "case_id": "pdrc_multilayer_cooling",
+        "title_cn": "被动日间辐射冷却薄膜光谱调控模块",
+        "title_en": "Passive Daytime Radiative Cooling Multilayer",
+        "variant": str(variant),
+        "theta_deg": float(theta_deg),
+        "pol": str(pol),
+        "lambda_um": lambda_um,
+        "wavelength_nm": lambda_um * 1000.0,
+        "r_complex": np.asarray(r_vals, dtype=complex),
+        "t_complex": np.asarray(t_vals, dtype=complex),
+        "R": r_arr,
+        "T": t_arr,
+        "A": a_arr,
+        "emissivity": emissivity,
+        "band": bands,
+        "layers": stack,
+        "optical_constant_note_cn": "第一版使用内置有效光学常数近似；后续可替换为实测 n,k 数据。",
+        "metrics": {
+            "A_solar_avg": solar_abs,
+            "R_solar_avg": solar_ref,
+            "epsilon_8_13_avg": epsilon_8_13,
+            "cooling_score": score,
+            "success_basic": bool(solar_abs < 0.15 and epsilon_8_13 > 0.70),
+            "success_better": bool(solar_abs < 0.10 and epsilon_8_13 > 0.80),
+        },
+        "representative_points": representative_rows,
+    }
+
+
+def export_pdrc_cooling_bundle(
+    *,
+    prefix: str = "pdrc_multilayer_cooling_v1",
+    variant: str = "full",
+    wavelengths_um: Sequence[float] | None = None,
+    theta_deg: float = 0.0,
+    pol: str = "p",
+    ag_thickness_nm: float = 500.0,
+) -> Dict[str, str]:
+    """Export PDRC spectrum, metrics, report text and figure."""
+    result = simulate_pdrc_multilayer_cooling(
+        variant=variant,
+        wavelengths_um=wavelengths_um,
+        theta_deg=theta_deg,
+        pol=pol,
+        ag_thickness_nm=ag_thickness_nm,
+    )
+    saved: Dict[str, str] = {}
+
+    lambda_um = np.asarray(result["lambda_um"], dtype=float)
+    r_vals = np.asarray(result["R"], dtype=float)
+    t_vals = np.asarray(result["T"], dtype=float)
+    a_vals = np.asarray(result["A"], dtype=float)
+    eps_vals = np.asarray(result["emissivity"], dtype=float)
+    bands = [str(item) for item in result["band"]]
+    metrics = result["metrics"]
+
+    csv_path = output_file(f"{prefix}_spectrum.csv")
+    with open(csv_path, "w", encoding="utf-8-sig") as f:
+        f.write("lambda_um,R,T,A,emissivity,band\n")
+        for row in zip(lambda_um, r_vals, t_vals, a_vals, eps_vals, bands):
+            f.write(f"{row[0]:.12g},{row[1]:.12g},{row[2]:.12g},{row[3]:.12g},{row[4]:.12g},{row[5]}\n")
+    saved["csv"] = str(csv_path)
+
+    metrics_path = output_file(f"{prefix}_metrics.csv")
+    with open(metrics_path, "w", encoding="utf-8-sig") as f:
+        f.write("A_solar_avg,R_solar_avg,epsilon_8_13_avg,cooling_score,success_basic,success_better\n")
+        f.write(
+            f"{metrics['A_solar_avg']:.12g},{metrics['R_solar_avg']:.12g},"
+            f"{metrics['epsilon_8_13_avg']:.12g},{metrics['cooling_score']:.12g},"
+            f"{int(bool(metrics['success_basic']))},{int(bool(metrics['success_better']))}\n"
+        )
+    saved["metrics_csv"] = str(metrics_path)
+
+    json_path = output_file(f"{prefix}_summary.json")
+    payload = {
+        "case_id": result["case_id"],
+        "title_cn": result["title_cn"],
+        "title_en": result["title_en"],
+        "variant": result["variant"],
+        "geometry_type": "2D planar laterally uniform multilayer",
+        "comsol_layer_order_top_to_bottom": [
+            "Air",
+            "SiO2_1",
+            "TiO2_1",
+            "SiO2_2",
+            "TiO2_2",
+            "SiO2_3",
+            "Ag",
+            "substrate",
+        ],
+        "theta_deg": result["theta_deg"],
+        "pol": result["pol"],
+        "layers": result["layers"],
+        "metrics": metrics,
+        "representative_points": result["representative_points"],
+        "optical_constant_note_cn": result["optical_constant_note_cn"],
+    }
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+    saved["json"] = str(json_path)
+
+    txt_path = output_file(f"{prefix}_summary.txt")
+    lines = [
+        "PDRC 被动日间辐射冷却薄膜光谱调控模块",
+        "=" * 80,
+        f"case_id              = {result['case_id']}",
+        f"variant              = {result['variant']}",
+        f"theta_deg            = {float(result['theta_deg']):.6f}",
+        f"pol                  = {result['pol']}",
+        f"A_solar_avg          = {float(metrics['A_solar_avg']):.12e}",
+        f"R_solar_avg          = {float(metrics['R_solar_avg']):.12e}",
+        f"epsilon_8_13_avg     = {float(metrics['epsilon_8_13_avg']):.12e}",
+        f"cooling_score        = {float(metrics['cooling_score']):.12e}",
+        f"success_basic        = {bool(metrics['success_basic'])}",
+        f"success_better       = {bool(metrics['success_better'])}",
+        "",
+        "结构：Air / SiO2_1 / TiO2_1 / SiO2_2 / TiO2_2 / SiO2_3 / Ag / substrate",
+        "COMSOL 几何：2D 横向均匀矩形层，x 方向宽度 w_cell = 1 um，从下往上画 substrate -> Ag -> SiO2_3 -> TiO2_2 -> SiO2_2 -> TiO2_1 -> SiO2_1 -> Air。",
+    ]
+    for layer in result["layers"]:
+        lines.append(
+            f"  {layer['name']}: {layer['material']}, d = {float(layer['thickness_nm']):.6f} nm"
+        )
+    lines.extend(
+        [
+            "",
+            "代表 COMSOL 验证点：",
+        ]
+    )
+    for row in result["representative_points"]:
+        lines.append(
+            f"  lambda = {row['lambda_um']:.3f} um | R={row['R']:.6f}, "
+            f"T={row['T']:.6f}, A/emissivity={row['emissivity']:.6f}"
+        )
+    lines.extend(
+        [
+            "",
+            f"说明：{result['optical_constant_note_cn']}",
+        ]
+    )
+    with open(txt_path, "w", encoding="utf-8-sig") as f:
+        f.write("\n".join(lines) + "\n")
+    saved["txt"] = str(txt_path)
+
+    png_path = output_file(f"{prefix}_spectrum.png")
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12.5, 4.8), gridspec_kw={"width_ratios": [2.2, 1.0]})
+    _style_teaching_axis(ax1)
+    _style_teaching_axis(ax2)
+    ax1.axvspan(0.3, 2.5, color="#dbeafe", alpha=0.55, label="太阳波段")
+    ax1.axvspan(8.0, 13.0, color="#fee2e2", alpha=0.55, label="8-13 μm 大气窗口")
+    ax1.plot(lambda_um, r_vals, color=MAIN_RED, linewidth=2.2, label="R")
+    ax1.plot(lambda_um, a_vals, color=ABS_GOLD, linewidth=2.2, label="A≈ε")
+    ax1.plot(lambda_um, t_vals, color=TRANS_BLUE, linewidth=1.7, alpha=0.8, label="T")
+    ax1.set_xscale("log")
+    ax1.set_xlim(0.3, 13.0)
+    ax1.set_ylim(0.0, 1.02)
+    ax1.set_xlabel("波长 (μm)")
+    ax1.set_ylabel("R / T / A")
+    ax1.set_title("PDRC 宽波段光谱", fontweight="semibold")
+    ax1.legend(loc="best", fontsize=8, frameon=True, facecolor="white", edgecolor="#c9d2dc")
+
+    labels = ["太阳吸收", "8-13μm发射", "冷却得分"]
+    values = [
+        float(metrics["A_solar_avg"]),
+        float(metrics["epsilon_8_13_avg"]),
+        float(metrics["cooling_score"]),
+    ]
+    colors = [MAIN_RED, TARGET_GREEN, ABS_GOLD]
+    ax2.bar(labels, values, color=colors, alpha=0.86)
+    ax2.axhline(0.15, color=MAIN_RED, linestyle=":", linewidth=1.4)
+    ax2.axhline(0.70, color=TARGET_GREEN, linestyle=":", linewidth=1.4)
+    ax2.set_ylim(0.0, 1.02)
+    ax2.set_ylabel("指标值")
+    ax2.set_title("模块指标", fontweight="semibold")
+    ax2.tick_params(axis="x", rotation=20)
+    for idx, val in enumerate(values):
+        ax2.text(idx, min(1.0, val + 0.035), f"{val:.3f}", ha="center", va="bottom", fontsize=9, color=TEXT_DARK)
+
+    fig.suptitle("被动日间辐射冷却薄膜光谱调控模块", fontsize=13, fontweight="semibold", color=TEXT_DARK)
+    fig.tight_layout()
+    fig.savefig(png_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    saved["png"] = str(png_path)
+
+    manifest_path = output_file(f"{prefix}_manifest.json")
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(saved, f, ensure_ascii=False, indent=2)
+    saved["manifest"] = str(manifest_path)
+
+    return saved
+
+
 def export_rugate_comsol_layer_table(
     *,
     prefix: str = "rugate_80layer_comsol",

@@ -6,4 +6,9 @@
 C:\Users\L2791\thinfilm_backups\inversion_examples_20260505
 ```
 
-当前 `archive/` 仅保留说明，不再在仓库中存放反演样本 CSV。
+当前 `archive/` 不再存放反演样本 CSV。
+
+## 当前保留内容
+
+- `figures/`：旧版汇报或对比展示图，避免继续堆在项目根目录。
+- `scripts/`：一次性临时绘图脚本，不作为主运行入口。

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from .education import (
+    export_pdrc_cooling_bundle,
     export_report_case_outputs,
     export_report_main_branch_catalog,
     export_report_comparison_figures,
@@ -10,6 +11,7 @@ from .education import (
     export_report_main_branch_bundle,
     get_report_main_branch_catalog,
     list_report_chapter2_cases,
+    simulate_pdrc_multilayer_cooling,
     simulate_report_case,
     simulate_report_chapter2_suite,
     simulate_report_design,
@@ -25,6 +27,7 @@ from .roadmap import (
     list_teaching_case_expansion_ids,
 )
 from .validation import (
+    analyze_tamm_interface_2d_window_csv,
     analyze_tamm_dw_phase_scan,
     analyze_quasi_random_absorbing_surface,
     analyze_absorbing_surface_gain_against_baseline,
@@ -40,6 +43,9 @@ from .validation import (
     export_porous_double_ar_sensitivity_bundle,
     export_quasi_random_absorbing_surface_bundle,
     export_tamm_interface_priority_bundle,
+    export_tamm_interface_window_analysis,
+    export_tamm_interface_window_collection,
+    export_tamm_interface_window_scan_collection,
     export_tamm_phase_candidate_pairs,
     export_tamm_phase_focus_bundle,
     export_tamm_dw_phase_bundle,
@@ -169,6 +175,52 @@ def export_frontier_model_bundle(
 ) -> Dict[str, str]:
     """Export the frontier research model tree bundle."""
     return export_frontier_research_module_bundle(**kwargs)
+
+
+def simulate_pdrc_cooling(
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    """APP-facing wrapper for the PDRC wideband multilayer screening model."""
+    return simulate_pdrc_multilayer_cooling(**kwargs)
+
+
+def export_pdrc_cooling_outputs(
+    **kwargs: Any,
+) -> Dict[str, str]:
+    """Export spectrum, metrics and plot for the PDRC cooling module."""
+    return export_pdrc_cooling_bundle(**kwargs)
+
+
+def analyze_tamm_interface_window(
+    reference_csv: str,
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    """Analyze a full-field Tamm interface CSV by cropping a local 2D window in Python."""
+    return analyze_tamm_interface_2d_window_csv(reference_csv=reference_csv, **kwargs)
+
+
+def export_tamm_interface_window_bundle(
+    reference_csv: str,
+    **kwargs: Any,
+) -> Dict[str, str]:
+    """Export local-window metrics for one Tamm interface field CSV."""
+    return export_tamm_interface_window_analysis(reference_csv=reference_csv, **kwargs)
+
+
+def export_tamm_interface_window_collection_bundle(
+    csv_mapping: Dict[str, str],
+    **kwargs: Any,
+) -> Dict[str, str]:
+    """Export a shared local-window analysis bundle for multiple Tamm interface field CSVs."""
+    return export_tamm_interface_window_collection(csv_mapping=csv_mapping, **kwargs)
+
+
+def export_tamm_interface_window_scan_bundle(
+    csv_mapping: Dict[str, str],
+    **kwargs: Any,
+) -> Dict[str, str]:
+    """Export a multi-window scan bundle for multiple Tamm interface field CSVs."""
+    return export_tamm_interface_window_scan_collection(csv_mapping=csv_mapping, **kwargs)
 
 
 def list_teaching_expansion_validation_templates() -> list[dict[str, Any]]:

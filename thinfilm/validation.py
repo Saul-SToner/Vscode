@@ -3506,3 +3506,686 @@ def export_tamm_interface_priority_bundle(
     saved["png"] = str(png_path)
 
     return saved
+
+
+def analyze_tamm_interface_2d_window_csv(
+    reference_csv: Path | str,
+    *,
+    x_window_um: tuple[float, float] = (-5.0, 5.0),
+    y_window_um: tuple[float, float] = (8.8, 10.4),
+    interface_half_width_um: float = 0.5,
+    background_left_um: tuple[float, float] = (-5.0, -3.0),
+    background_right_um: tuple[float, float] = (3.0, 5.0),
+) -> Dict[str, Any]:
+    """Analyze a full-field 2D CSV by cropping a local interface window in Python."""
+
+    path = Path(reference_csv)
+    groups: Dict[tuple[int, float], Dict[str, float]] = {}
+    y_first: float | None = None
+    unique_x_values: set[float] = set()
+    unique_y_values: set[float] = set()
+
+    def _norm_header_name(name: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "", name.strip().lower())
+
+    def _try_build_header_map(cols: Sequence[str]) -> Dict[str, int] | None:
+        normalized = [_norm_header_name(col) for col in cols]
+        candidates: Dict[str, Sequence[str]] = {
+            "x_um": ("x1um", "xum", "x"),
+            "y_um": ("y1um", "yum", "y"),
+            "lam_um": ("lam1um", "lambda1um", "lamum", "lambdaum", "lam"),
+            "d_w_l_nm": ("dwl1nm", "dwl_nm", "dwlnm", "dwl", "dwlftnm", "dwlleftnm", "dwlnanometer", "dwlnm1", "dwlnm2"),
+            "norm_e": ("ewfdnorme", "norme"),
+            "norm_e2": ("ewfdnorme2", "ewfdnorme2v", "norme2"),
+            "qh": ("ewfdqh", "qh"),
+        }
+        mapping: Dict[str, int] = {}
+        for key, aliases in candidates.items():
+            for idx, item in enumerate(normalized):
+                if item in aliases:
+                    mapping[key] = idx
+                    break
+        required = {"x_um", "y_um", "lam_um", "d_w_l_nm", "norm_e", "norm_e2", "qh"}
+        return mapping if required.issubset(mapping) else None
+
+    legacy_index_map = {
+        "x_um": 5,
+        "y_um": 6,
+        "norm_e": 8,
+        "norm_e2": 9,
+        "qh": 10,
+        "lam_um": 11,
+        "d_w_l_nm": 12,
+    }
+    compact_index_map = {
+        "x_um": 5,
+        "y_um": 6,
+        "lam_um": 7,
+        "d_w_l_nm": 8,
+        "norm_e": 9,
+        "norm_e2": 10,
+        "qh": 11,
+    }
+    header_index_map: Dict[str, int] | None = None
+
+    with open(path, "r", encoding="utf-8-sig", newline="") as f:
+        for raw_line in f:
+            if not raw_line.strip() or raw_line.startswith("%"):
+                continue
+            cols = raw_line.strip().split(",")
+            if header_index_map is None:
+                possible_header = _try_build_header_map(cols)
+                if possible_header is not None:
+                    header_index_map = possible_header
+                    continue
+                header_index_map = compact_index_map if len(cols) == 12 else legacy_index_map
+
+            index_map = header_index_map
+            required_max = max(index_map.values())
+            if len(cols) <= required_max:
+                continue
+            try:
+                x_um = float(cols[index_map["x_um"]])
+                y_um = float(cols[index_map["y_um"]])
+                lam_um = round(float(cols[index_map["lam_um"]]), 2)
+                d_w_l_nm = int(round(float(cols[index_map["d_w_l_nm"]])))
+                norm_e = float(cols[index_map["norm_e"]])
+                norm_e2 = float(cols[index_map["norm_e2"]])
+                qh = float(cols[index_map["qh"]])
+            except ValueError:
+                continue
+
+            if y_first is None:
+                y_first = y_um
+            unique_x_values.add(round(x_um, 6))
+            unique_y_values.add(round(y_um, 6))
+            if not (x_window_um[0] <= x_um <= x_window_um[1] and y_window_um[0] <= y_um <= y_window_um[1]):
+                continue
+
+            key = (d_w_l_nm, lam_um)
+            bucket = groups.setdefault(
+                key,
+                {
+                    "count": 0.0,
+                    "sum_e2": 0.0,
+                    "sum_qh": 0.0,
+                    "sum_xe2": 0.0,
+                    "sum_x2e2": 0.0,
+                    "if_sum_e2": 0.0,
+                    "if_count": 0.0,
+                    "bg_l_sum_e2": 0.0,
+                    "bg_l_count": 0.0,
+                    "bg_r_sum_e2": 0.0,
+                    "bg_r_count": 0.0,
+                    "max_e2": -1.0,
+                    "max_norme": -1.0,
+                    "max_x_um": 0.0,
+                    "max_y_um": 0.0,
+                },
+            )
+
+            bucket["count"] += 1.0
+            bucket["sum_e2"] += norm_e2
+            bucket["sum_qh"] += qh
+            bucket["sum_xe2"] += x_um * norm_e2
+            bucket["sum_x2e2"] += (x_um * x_um) * norm_e2
+
+            if abs(x_um) <= interface_half_width_um:
+                bucket["if_sum_e2"] += norm_e2
+                bucket["if_count"] += 1.0
+            if background_left_um[0] <= x_um <= background_left_um[1]:
+                bucket["bg_l_sum_e2"] += norm_e2
+                bucket["bg_l_count"] += 1.0
+            if background_right_um[0] <= x_um <= background_right_um[1]:
+                bucket["bg_r_sum_e2"] += norm_e2
+                bucket["bg_r_count"] += 1.0
+
+            if norm_e2 > bucket["max_e2"]:
+                bucket["max_e2"] = norm_e2
+                bucket["max_norme"] = norm_e
+                bucket["max_x_um"] = x_um
+                bucket["max_y_um"] = y_um
+
+    if not groups:
+        raise ValueError(f"在指定窗口内没有读取到任何二维点数据：{path}")
+
+    rows: List[Dict[str, Any]] = []
+    for (d_w_l_nm, lam_um), bucket in sorted(groups.items()):
+        sum_e2 = float(bucket["sum_e2"])
+        if_avg = float(bucket["if_sum_e2"]) / max(float(bucket["if_count"]), 1.0)
+        bg_l_avg = float(bucket["bg_l_sum_e2"]) / max(float(bucket["bg_l_count"]), 1.0)
+        bg_r_avg = float(bucket["bg_r_sum_e2"]) / max(float(bucket["bg_r_count"]), 1.0)
+        bg_avg = 0.5 * (bg_l_avg + bg_r_avg)
+        xc_um = float(bucket["sum_xe2"]) / sum_e2
+        second_moment = float(bucket["sum_x2e2"]) / sum_e2
+        wx_um = max(second_moment - xc_um * xc_um, 0.0) ** 0.5
+        rows.append(
+            {
+                "dW_left_nm": int(d_w_l_nm),
+                "wavelength_um": float(lam_um),
+                "window_points": int(bucket["count"]),
+                "eta_interface": float(bucket["if_sum_e2"]) / sum_e2,
+                "G_interface": (if_avg / bg_avg) if bg_avg > 0 else float("nan"),
+                "xc_um": xc_um,
+                "wx_um": wx_um,
+                "max_x_um": float(bucket["max_x_um"]),
+                "max_y_um": float(bucket["max_y_um"]),
+                "max_normE": float(bucket["max_norme"]),
+                "max_normE2": float(bucket["max_e2"]),
+                "mean_Qh": float(bucket["sum_qh"]) / max(float(bucket["count"]), 1.0),
+            }
+        )
+
+    x_centered = min(rows, key=lambda item: abs(float(item["xc_um"])))
+    best_interface = max(rows, key=lambda item: float(item["G_interface"]))
+    most_localized = min(rows, key=lambda item: float(item["wx_um"]))
+
+    return {
+        "reference_csv": str(path),
+        "x_window_um": [float(x_window_um[0]), float(x_window_um[1])],
+        "y_window_um": [float(y_window_um[0]), float(y_window_um[1])],
+        "interface_half_width_um": float(interface_half_width_um),
+        "background_left_um": [float(background_left_um[0]), float(background_left_um[1])],
+        "background_right_um": [float(background_right_um[0]), float(background_right_um[1])],
+        "source_first_y_um": float(y_first) if y_first is not None else None,
+        "source_unique_x_count": len(unique_x_values),
+        "source_unique_y_count": len(unique_y_values),
+        "source_is_true_2d": len(unique_x_values) > 1 and len(unique_y_values) > 1,
+        "rows": rows,
+        "best_x_centered": x_centered,
+        "best_interface_gain": best_interface,
+        "best_localized": most_localized,
+    }
+
+
+def export_tamm_interface_window_analysis(
+    reference_csv: Path | str,
+    *,
+    prefix: str = "tamm_interface_window_v1",
+    x_window_um: tuple[float, float] = (-5.0, 5.0),
+    y_window_um: tuple[float, float] = (8.8, 10.4),
+    interface_half_width_um: float = 0.5,
+    background_left_um: tuple[float, float] = (-5.0, -3.0),
+    background_right_um: tuple[float, float] = (3.0, 5.0),
+) -> Dict[str, str]:
+    """Export local-window interface metrics for one 2D Tamm field CSV."""
+
+    result = analyze_tamm_interface_2d_window_csv(
+        reference_csv,
+        x_window_um=x_window_um,
+        y_window_um=y_window_um,
+        interface_half_width_um=interface_half_width_um,
+        background_left_um=background_left_um,
+        background_right_um=background_right_um,
+    )
+    rows = result["rows"]
+
+    saved: Dict[str, str] = {}
+    csv_path = output_file(f"{prefix}.csv")
+    with open(csv_path, "w", encoding="utf-8-sig") as f:
+        f.write("dW_left_nm,wavelength_um,window_points,eta_interface,G_interface,xc_um,wx_um,max_x_um,max_y_um,max_normE,max_normE2,mean_Qh\n")
+        for row in rows:
+            f.write(
+                f"{int(row['dW_left_nm'])},{float(row['wavelength_um']):.12g},{int(row['window_points'])},"
+                f"{float(row['eta_interface']):.12g},{float(row['G_interface']):.12g},{float(row['xc_um']):.12g},"
+                f"{float(row['wx_um']):.12g},{float(row['max_x_um']):.12g},{float(row['max_y_um']):.12g},"
+                f"{float(row['max_normE']):.12g},{float(row['max_normE2']):.12g},{float(row['mean_Qh']):.12g}\n"
+            )
+    saved["csv"] = str(csv_path)
+
+    json_path = output_file(f"{prefix}.json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(result, f, ensure_ascii=False, indent=2)
+    saved["json"] = str(json_path)
+
+    txt_path = output_file(f"{prefix}.txt")
+    lines = [
+        "Tamm 界面二维局域窗口分析",
+        "=" * 80,
+        f"reference_csv = {result['reference_csv']}",
+        f"x_window_um = {result['x_window_um']}",
+        f"y_window_um = {result['y_window_um']}",
+        f"interface_half_width_um = {result['interface_half_width_um']}",
+        f"source_unique_x_count = {int(result['source_unique_x_count'])}",
+        f"source_unique_y_count = {int(result['source_unique_y_count'])}",
+        f"source_is_true_2d = {bool(result['source_is_true_2d'])}",
+        "",
+        f"最接近界面中心 = dW_left {int(result['best_x_centered']['dW_left_nm'])} nm @ {float(result['best_x_centered']['wavelength_um']):.2f} μm | xc={float(result['best_x_centered']['xc_um']):+.3f} μm",
+        f"界面增强最大 = dW_left {int(result['best_interface_gain']['dW_left_nm'])} nm @ {float(result['best_interface_gain']['wavelength_um']):.2f} μm | G={float(result['best_interface_gain']['G_interface']):.3f}",
+        f"横向最局域 = dW_left {int(result['best_localized']['dW_left_nm'])} nm @ {float(result['best_localized']['wavelength_um']):.2f} μm | wx={float(result['best_localized']['wx_um']):.3f} μm",
+        "",
+    ]
+    for row in rows:
+        lines.append(
+            f"dW={int(row['dW_left_nm'])} nm | λ={float(row['wavelength_um']):.2f} μm | "
+            f"η_if={float(row['eta_interface']):.4f} | G_if={float(row['G_interface']):.3f} | "
+            f"xc={float(row['xc_um']):+.3f} μm | wx={float(row['wx_um']):.3f} μm"
+        )
+    with open(txt_path, "w", encoding="utf-8-sig") as f:
+        f.write("\n".join(lines) + "\n")
+    saved["txt"] = str(txt_path)
+
+    grouped: Dict[float, List[Dict[str, Any]]] = {}
+    for row in rows:
+        grouped.setdefault(float(row["wavelength_um"]), []).append(row)
+    for item in grouped.values():
+        item.sort(key=lambda row: int(row["dW_left_nm"]))
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8), constrained_layout=True)
+    font = _cn_font()
+    colors = plt.cm.viridis(np.linspace(0.15, 0.85, len(grouped)))
+
+    ax = axes[0, 0]
+    for color, (lam, item_rows) in zip(colors, sorted(grouped.items())):
+        ax.plot(
+            [int(row["dW_left_nm"]) for row in item_rows],
+            [float(row["xc_um"]) for row in item_rows],
+            color=color,
+            linewidth=2.2,
+            marker="o",
+            label=f"{lam:.2f} μm",
+        )
+    _style_axis(ax)
+    _set_axis_labels_cn(ax, title="热点中心位置", xlabel="左侧 d_W (nm)", ylabel="xc (μm)")
+    ax.axhline(0.0, color="#8b95a5", linewidth=1.0, linestyle="--")
+    ax.legend(prop=font, frameon=False, loc="best")
+
+    ax = axes[0, 1]
+    for color, (lam, item_rows) in zip(colors, sorted(grouped.items())):
+        ax.plot(
+            [int(row["dW_left_nm"]) for row in item_rows],
+            [float(row["G_interface"]) for row in item_rows],
+            color=color,
+            linewidth=2.2,
+            marker="o",
+            label=f"{lam:.2f} μm",
+        )
+    _style_axis(ax)
+    _set_axis_labels_cn(ax, title="界面相对背景增强", xlabel="左侧 d_W (nm)", ylabel="G_interface")
+    ax.axhline(1.0, color="#8b95a5", linewidth=1.0, linestyle="--")
+
+    ax = axes[1, 0]
+    for color, (lam, item_rows) in zip(colors, sorted(grouped.items())):
+        ax.plot(
+            [int(row["dW_left_nm"]) for row in item_rows],
+            [float(row["eta_interface"]) for row in item_rows],
+            color=color,
+            linewidth=2.2,
+            marker="o",
+            label=f"{lam:.2f} μm",
+        )
+    _style_axis(ax)
+    _set_axis_labels_cn(ax, title="界面局域占比", xlabel="左侧 d_W (nm)", ylabel="η_interface")
+
+    ax = axes[1, 1]
+    for color, (lam, item_rows) in zip(colors, sorted(grouped.items())):
+        ax.plot(
+            [int(row["dW_left_nm"]) for row in item_rows],
+            [float(row["wx_um"]) for row in item_rows],
+            color=color,
+            linewidth=2.2,
+            marker="o",
+            label=f"{lam:.2f} μm",
+        )
+    _style_axis(ax)
+    _set_axis_labels_cn(ax, title="横向局域宽度", xlabel="左侧 d_W (nm)", ylabel="wx (μm)")
+
+    png_path = output_file(f"{prefix}.png")
+    fig.savefig(png_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    saved["png"] = str(png_path)
+    return saved
+
+
+def export_tamm_interface_window_collection(
+    csv_mapping: Dict[str, Path | str],
+    *,
+    prefix: str = "tamm_interface_window_collection_v1",
+    x_window_um: tuple[float, float] = (-5.0, 5.0),
+    y_window_um: tuple[float, float] = (8.8, 10.4),
+    interface_half_width_um: float = 0.5,
+    background_left_um: tuple[float, float] = (-5.0, -3.0),
+    background_right_um: tuple[float, float] = (3.0, 5.0),
+) -> Dict[str, str]:
+    """Process a collection of full-field Tamm interface CSVs with a shared local window."""
+
+    collection_rows: List[Dict[str, Any]] = []
+    summaries: Dict[str, Any] = {}
+    skipped: Dict[str, str] = {}
+    for label, path in csv_mapping.items():
+        try:
+            result = analyze_tamm_interface_2d_window_csv(
+                path,
+                x_window_um=x_window_um,
+                y_window_um=y_window_um,
+                interface_half_width_um=interface_half_width_um,
+                background_left_um=background_left_um,
+                background_right_um=background_right_um,
+            )
+        except ValueError as exc:
+            skipped[label] = str(exc)
+            continue
+        summaries[label] = result
+        for row in result["rows"]:
+            item = dict(row)
+            item["source_label"] = label
+            collection_rows.append(item)
+
+    if not collection_rows:
+        raise ValueError("没有可导出的二维窗口分析结果。")
+
+    saved: Dict[str, str] = {}
+    csv_path = output_file(f"{prefix}.csv")
+    with open(csv_path, "w", encoding="utf-8-sig") as f:
+        f.write("source_label,dW_left_nm,wavelength_um,window_points,eta_interface,G_interface,xc_um,wx_um,max_x_um,max_y_um,max_normE,max_normE2,mean_Qh\n")
+        for row in sorted(collection_rows, key=lambda item: (str(item["source_label"]), int(item["dW_left_nm"]), float(item["wavelength_um"]))):
+            f.write(
+                f"{row['source_label']},{int(row['dW_left_nm'])},{float(row['wavelength_um']):.12g},{int(row['window_points'])},"
+                f"{float(row['eta_interface']):.12g},{float(row['G_interface']):.12g},{float(row['xc_um']):.12g},"
+                f"{float(row['wx_um']):.12g},{float(row['max_x_um']):.12g},{float(row['max_y_um']):.12g},"
+                f"{float(row['max_normE']):.12g},{float(row['max_normE2']):.12g},{float(row['mean_Qh']):.12g}\n"
+            )
+    saved["csv"] = str(csv_path)
+
+    json_path = output_file(f"{prefix}.json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "x_window_um": [float(x_window_um[0]), float(x_window_um[1])],
+                "y_window_um": [float(y_window_um[0]), float(y_window_um[1])],
+                "interface_half_width_um": float(interface_half_width_um),
+                "background_left_um": [float(background_left_um[0]), float(background_left_um[1])],
+                "background_right_um": [float(background_right_um[0]), float(background_right_um[1])],
+                "sources": summaries,
+                "skipped": skipped,
+            },
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
+    saved["json"] = str(json_path)
+
+    txt_path = output_file(f"{prefix}.txt")
+    lines = [
+        "Tamm 界面二维窗口分析总表",
+        "=" * 80,
+        f"x_window_um = {list(x_window_um)}",
+        f"y_window_um = {list(y_window_um)}",
+        "",
+    ]
+    if skipped:
+        lines.append("[跳过文件]")
+        for label, reason in skipped.items():
+            lines.append(f"{label}: {reason}")
+        lines.append("")
+    for label, result in summaries.items():
+        lines.extend(
+            [
+                f"[{label}]",
+                f"reference_csv = {result['reference_csv']}",
+                f"source_is_true_2d = {bool(result['source_is_true_2d'])} | unique_x = {int(result['source_unique_x_count'])} | unique_y = {int(result['source_unique_y_count'])}",
+                f"best_x_centered: dW={int(result['best_x_centered']['dW_left_nm'])} nm @ {float(result['best_x_centered']['wavelength_um']):.2f} μm | xc={float(result['best_x_centered']['xc_um']):+.3f} μm",
+                f"best_interface_gain: dW={int(result['best_interface_gain']['dW_left_nm'])} nm @ {float(result['best_interface_gain']['wavelength_um']):.2f} μm | G={float(result['best_interface_gain']['G_interface']):.3f}",
+                f"best_localized: dW={int(result['best_localized']['dW_left_nm'])} nm @ {float(result['best_localized']['wavelength_um']):.2f} μm | wx={float(result['best_localized']['wx_um']):.3f} μm",
+                "",
+            ]
+        )
+    with open(txt_path, "w", encoding="utf-8-sig") as f:
+        f.write("\n".join(lines) + "\n")
+    saved["txt"] = str(txt_path)
+
+    fig, axes = plt.subplots(2, 2, figsize=(13, 8), constrained_layout=True)
+    font = _cn_font()
+    source_colors = plt.cm.tab10(np.linspace(0.0, 0.9, len(summaries)))
+    source_to_color = {label: source_colors[i] for i, label in enumerate(sorted(summaries))}
+
+    for ax, metric, title, ylabel in [
+        (axes[0, 0], "xc_um", "热点中心位置", "xc (μm)"),
+        (axes[0, 1], "G_interface", "界面相对背景增强", "G_interface"),
+        (axes[1, 0], "eta_interface", "界面局域占比", "η_interface"),
+        (axes[1, 1], "wx_um", "横向局域宽度", "wx (μm)"),
+    ]:
+        for label in sorted(summaries):
+            source_rows = [row for row in collection_rows if row["source_label"] == label and abs(float(row["wavelength_um"]) - 4.55) < 1e-9]
+            if not source_rows:
+                continue
+            source_rows.sort(key=lambda row: int(row["dW_left_nm"]))
+            ax.plot(
+                [int(row["dW_left_nm"]) for row in source_rows],
+                [float(row[metric]) for row in source_rows],
+                color=source_to_color[label],
+                linewidth=2.2,
+                marker="o",
+                label=label,
+            )
+        _style_axis(ax)
+        _set_axis_labels_cn(ax, title=title, xlabel="左侧 d_W (nm)", ylabel=ylabel)
+        if metric == "xc_um":
+            ax.axhline(0.0, color="#8b95a5", linewidth=1.0, linestyle="--")
+        if metric == "G_interface":
+            ax.axhline(1.0, color="#8b95a5", linewidth=1.0, linestyle="--")
+    axes[0, 0].legend(prop=font, frameon=False, loc="best")
+
+    png_path = output_file(f"{prefix}.png")
+    fig.savefig(png_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    saved["png"] = str(png_path)
+
+    return saved
+
+
+def export_tamm_interface_window_scan_collection(
+    csv_mapping: Dict[str, Path | str],
+    *,
+    prefix: str = "tamm_interface_window_scan_v1",
+    x_window_um: tuple[float, float] = (-5.0, 5.0),
+    y_windows_um: Sequence[tuple[float, float]] = ((8.8, 10.4), (9.0, 9.8), (9.2, 10.0)),
+    interface_half_widths_um: Sequence[float] = (0.3, 0.5, 0.8),
+    background_left_um: tuple[float, float] = (-5.0, -3.0),
+    background_right_um: tuple[float, float] = (3.0, 5.0),
+    focus_wavelength_um: float = 4.55,
+) -> Dict[str, str]:
+    """Scan multiple 2D window definitions for the same Tamm interface field datasets."""
+
+    config_rows: List[Dict[str, Any]] = []
+    config_summaries: Dict[str, Any] = {}
+    skipped: Dict[str, Dict[str, str]] = {}
+
+    def _config_label(y_window: tuple[float, float], half_width: float) -> str:
+        return (
+            f"x±{x_window_um[1]:.1f}_"
+            f"y{y_window[0]:.1f}-{y_window[1]:.1f}_"
+            f"if{half_width:.1f}"
+        )
+
+    for y_window_um in y_windows_um:
+        for interface_half_width_um in interface_half_widths_um:
+            label = _config_label(y_window_um, interface_half_width_um)
+            config_summary: Dict[str, Any] = {
+                "x_window_um": [float(x_window_um[0]), float(x_window_um[1])],
+                "y_window_um": [float(y_window_um[0]), float(y_window_um[1])],
+                "interface_half_width_um": float(interface_half_width_um),
+                "sources": {},
+            }
+            config_skipped: Dict[str, str] = {}
+            for source_label, path in csv_mapping.items():
+                try:
+                    result = analyze_tamm_interface_2d_window_csv(
+                        path,
+                        x_window_um=x_window_um,
+                        y_window_um=y_window_um,
+                        interface_half_width_um=interface_half_width_um,
+                        background_left_um=background_left_um,
+                        background_right_um=background_right_um,
+                    )
+                except ValueError as exc:
+                    config_skipped[source_label] = str(exc)
+                    continue
+                config_summary["sources"][source_label] = result
+                for row in result["rows"]:
+                    item = dict(row)
+                    item["config_label"] = label
+                    item["source_label"] = source_label
+                    item["x_window_um"] = [float(x_window_um[0]), float(x_window_um[1])]
+                    item["y_window_um"] = [float(y_window_um[0]), float(y_window_um[1])]
+                    item["interface_half_width_um"] = float(interface_half_width_um)
+                    config_rows.append(item)
+            if config_skipped:
+                skipped[label] = config_skipped
+            config_summaries[label] = config_summary
+
+    if not config_rows:
+        raise ValueError("没有可导出的二维窗口扫描结果。")
+
+    saved: Dict[str, str] = {}
+    csv_path = output_file(f"{prefix}.csv")
+    with open(csv_path, "w", encoding="utf-8-sig") as f:
+        f.write(
+            "config_label,source_label,dW_left_nm,wavelength_um,window_points,"
+            "eta_interface,G_interface,xc_um,wx_um,max_x_um,max_y_um,max_normE,max_normE2,mean_Qh,"
+            "x_window_min_um,x_window_max_um,y_window_min_um,y_window_max_um,interface_half_width_um\n"
+        )
+        for row in sorted(
+            config_rows,
+            key=lambda item: (
+                str(item["config_label"]),
+                str(item["source_label"]),
+                int(item["dW_left_nm"]),
+                float(item["wavelength_um"]),
+            ),
+        ):
+            f.write(
+                f"{row['config_label']},{row['source_label']},{int(row['dW_left_nm'])},"
+                f"{float(row['wavelength_um']):.12g},{int(row['window_points'])},"
+                f"{float(row['eta_interface']):.12g},{float(row['G_interface']):.12g},"
+                f"{float(row['xc_um']):.12g},{float(row['wx_um']):.12g},"
+                f"{float(row['max_x_um']):.12g},{float(row['max_y_um']):.12g},"
+                f"{float(row['max_normE']):.12g},{float(row['max_normE2']):.12g},{float(row['mean_Qh']):.12g},"
+                f"{float(row['x_window_um'][0]):.12g},{float(row['x_window_um'][1]):.12g},"
+                f"{float(row['y_window_um'][0]):.12g},{float(row['y_window_um'][1]):.12g},"
+                f"{float(row['interface_half_width_um']):.12g}\n"
+            )
+    saved["csv"] = str(csv_path)
+
+    focus_rows = [row for row in config_rows if abs(float(row["wavelength_um"]) - focus_wavelength_um) < 1e-9]
+    focus_best_by_source: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    for source_label in sorted({str(row["source_label"]) for row in focus_rows}):
+        source_rows = [row for row in focus_rows if str(row["source_label"]) == source_label]
+        if not source_rows:
+            continue
+        best_centered = min(source_rows, key=lambda item: abs(float(item["xc_um"])))
+        best_gain = max(source_rows, key=lambda item: float(item["G_interface"]))
+        best_localized = min(source_rows, key=lambda item: float(item["wx_um"]))
+        focus_best_by_source[source_label] = {
+            "best_centered": best_centered,
+            "best_gain": best_gain,
+            "best_localized": best_localized,
+        }
+
+    json_path = output_file(f"{prefix}.json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "x_window_um": [float(x_window_um[0]), float(x_window_um[1])],
+                "y_windows_um": [[float(a), float(b)] for a, b in y_windows_um],
+                "interface_half_widths_um": [float(item) for item in interface_half_widths_um],
+                "background_left_um": [float(background_left_um[0]), float(background_left_um[1])],
+                "background_right_um": [float(background_right_um[0]), float(background_right_um[1])],
+                "focus_wavelength_um": float(focus_wavelength_um),
+                "rows": config_rows,
+                "focus_best_by_source": focus_best_by_source,
+                "configs": config_summaries,
+                "skipped": skipped,
+            },
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
+    saved["json"] = str(json_path)
+
+    txt_path = output_file(f"{prefix}.txt")
+    lines = [
+        "Tamm 界面二维窗口/判据扫描",
+        "=" * 80,
+        f"x_window_um = {list(x_window_um)}",
+        f"focus_wavelength_um = {focus_wavelength_um:.2f}",
+        f"y_windows_um = {[list(item) for item in y_windows_um]}",
+        f"interface_half_widths_um = {[float(item) for item in interface_half_widths_um]}",
+        "",
+    ]
+    if skipped:
+        lines.append("[跳过记录]")
+        for config_label, item in skipped.items():
+            for source_label, reason in item.items():
+                lines.append(f"{config_label} | {source_label}: {reason}")
+        lines.append("")
+    for source_label, bests in focus_best_by_source.items():
+        lines.extend(
+            [
+                f"[{source_label}] @ {focus_wavelength_um:.2f} μm",
+                f"best_centered: {bests['best_centered']['config_label']} | dW={int(bests['best_centered']['dW_left_nm'])} nm | xc={float(bests['best_centered']['xc_um']):+.3f} μm",
+                f"best_gain: {bests['best_gain']['config_label']} | dW={int(bests['best_gain']['dW_left_nm'])} nm | G={float(bests['best_gain']['G_interface']):.3f}",
+                f"best_localized: {bests['best_localized']['config_label']} | dW={int(bests['best_localized']['dW_left_nm'])} nm | wx={float(bests['best_localized']['wx_um']):.3f} μm",
+                "",
+            ]
+        )
+    with open(txt_path, "w", encoding="utf-8-sig") as f:
+        f.write("\n".join(lines) + "\n")
+    saved["txt"] = str(txt_path)
+
+    focus_centered_rows: Dict[str, List[Dict[str, Any]]] = {}
+    for source_label in sorted({str(row["source_label"]) for row in focus_rows}):
+        source_rows = [row for row in focus_rows if str(row["source_label"]) == source_label]
+        if not source_rows:
+            continue
+        by_config: Dict[str, Dict[str, Any]] = {}
+        for row in source_rows:
+            config_label = str(row["config_label"])
+            current = by_config.get(config_label)
+            if current is None or abs(float(row["xc_um"])) < abs(float(current["xc_um"])):
+                by_config[config_label] = row
+        focus_centered_rows[source_label] = [
+            by_config[key] for key in sorted(by_config)
+        ]
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4.8), constrained_layout=True)
+    font = _cn_font()
+    source_colors = plt.cm.tab10(np.linspace(0.0, 0.9, max(len(focus_centered_rows), 1)))
+    source_to_color = {
+        label: source_colors[i] for i, label in enumerate(sorted(focus_centered_rows))
+    }
+    ordered_config_labels = sorted({row["config_label"] for row in focus_rows})
+    x_positions = np.arange(len(ordered_config_labels))
+
+    for ax, metric, title, ylabel, transform in [
+        (axes[0], "xc_um", "最接近界面中心的热点位置", "|xc| (μm)", lambda v: abs(float(v))),
+        (axes[1], "G_interface", "界面相对背景增强", "G_interface", float),
+        (axes[2], "wx_um", "横向局域宽度", "wx (μm)", float),
+    ]:
+        for source_label in sorted(focus_centered_rows):
+            rows = focus_centered_rows[source_label]
+            y_values: List[float] = []
+            for config_label in ordered_config_labels:
+                matched = next((row for row in rows if str(row["config_label"]) == config_label), None)
+                y_values.append(float("nan") if matched is None else transform(matched[metric]))
+            ax.plot(
+                x_positions,
+                y_values,
+                color=source_to_color[source_label],
+                linewidth=2.0,
+                marker="o",
+                label=source_label,
+            )
+        _style_axis(ax)
+        _set_axis_labels_cn(ax, title=title, xlabel="窗口配置", ylabel=ylabel)
+        ax.set_xticks(x_positions)
+        ax.set_xticklabels(ordered_config_labels, rotation=30, ha="right", fontproperties=font)
+        if metric == "G_interface":
+            ax.axhline(1.0, color="#8b95a5", linewidth=1.0, linestyle="--")
+    axes[0].legend(prop=font, frameon=False, loc="best")
+
+    png_path = output_file(f"{prefix}.png")
+    fig.savefig(png_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    saved["png"] = str(png_path)
+    return saved
