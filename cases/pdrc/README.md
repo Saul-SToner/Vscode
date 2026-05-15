@@ -15,3 +15,9 @@ python run_pdrc_cooling_bundle.py --comsol-csv "path/to/pdrc_ir_window.csv"
 太阳波段：0.3-2.5 um 低吸收
 红外窗口：8-13 um 高发射
 ```
+
+专题说明页：
+
+```text
+pdrc_multilayer_cooling/
+```

@@ -10,3 +10,9 @@ python run_guided_grating_demo.py --sweep-csv "path/to/sweep.csv" --target-wavel
 ```
 
 说明：当前占位求解器只用于验证工程链路；正式物理结果来自 COMSOL CSV。
+
+专题说明页：
+
+```text
+minimal_branch/
+```

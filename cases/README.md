@@ -7,6 +7,7 @@
 ```text
 根目录 run_*.py      稳定入口，只做转发
 cases/*/run_*.py    具体专题运行代码
+cases/*/*/README.md 具体案例说明页
 thinfilm/           薄膜教学、验证和研究分析库
 guided_grating/     光栅波导支线库
 ```
@@ -27,3 +28,14 @@ python cases/teaching/run_teaching_demo.py --list
 - `tamm/`：Tamm 相位、候选对和界面窗口分析。
 - `pdrc/`：PDRC 被动日间辐射冷却模块。
 - `frontier/`：前沿研究模型树。
+
+## 案例说明页约定
+
+具体案例文件夹主要承担“展示说明”的职责，不一定每个文件夹都有独立 Python 脚本。许多平面膜案例由 `thinfilm/education.py` 统一定义，并通过 `run_teaching_demo.py --case <case_id>` 调用。
+
+每个案例 README 优先回答四个问题：
+
+1. 这个案例的物理对象是什么。
+2. 推荐比较哪些输出量。
+3. COMSOL 或实验 CSV 应该导出什么。
+4. Python 侧如何运行和判断结果。

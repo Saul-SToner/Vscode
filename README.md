@@ -39,16 +39,28 @@ python run_guided_grating_demo.py
 ## 2. 目录概览
 
 ```text
-thinfilm/                    教学主树、通用 CSV 读取、验证模块
-guided_grating/              光栅波导研究支线
-cases/                       按专题整理的具体运行脚本
-run_teaching_demo.py         教学主树稳定入口，转发到 cases/teaching/
-run_guided_grating_demo.py   光栅波导稳定入口，转发到 cases/guided_grating/
+README.md                    项目总说明
+run_*.py                     根目录稳定入口，只负责转发
+cases/                       各专题和具体案例的运行脚本与说明
+thinfilm/                    薄膜光学核心库、教学主树、验证模块
+guided_grating/              光栅波导研究支线库
+data/                        数据路径说明目录
+archive/                     历史归档与非主线材料
+requirements.txt             Python 环境依赖
 smoke_test.py                最小导入与演示命令体检
-data/                        主路径说明目录
 ```
 
-根目录 `run_*.py` 是给展示、CI 和旧命令使用的稳定入口；具体专题脚本已按案例放入 `cases/`。如果需要查看某一专题有哪些脚本，优先进入对应子目录阅读 `README.md`。
+推荐从外向内理解仓库：
+
+```text
+根目录 run_*.py      给老师、组员、评委和 CI 使用的稳定入口
+cases/*/run_*.py    具体专题内部脚本
+cases/*/*/README.md 具体案例说明页
+thinfilm/           底层薄膜光学模型、导出、验证和数据分析函数
+guided_grating/     光栅波导支线函数库
+```
+
+根目录入口会通过 `_entrypoint_runner.py` 转发到 `cases/` 内部脚本。这样旧命令仍然稳定，同时仓库展示层也能按专题和案例阅读。
 
 `thinfilm/` 当前重点模块：
 
