@@ -62,6 +62,25 @@ guided_grating/     光栅波导支线函数库
 
 根目录入口会通过 `_entrypoint_runner.py` 转发到 `cases/` 内部脚本。这样旧命令仍然稳定，同时仓库展示层也能按专题和案例阅读。
 
+## 2.1 模块路线图
+
+```mermaid
+flowchart LR
+    A["根目录稳定入口 run_*.py"] --> B["cases/ 专题与案例说明"]
+    B --> C["教学主树"]
+    B --> D["高级减反"]
+    B --> E["吸收表面"]
+    B --> F["PDRC 被动日间辐射冷却"]
+    B --> G["Tamm 界面态与热辐射调控"]
+    B --> H["光栅波导支线"]
+    C --> I["thinfilm/ 传输矩阵、导出、验证"]
+    D --> I
+    E --> I
+    F --> I
+    G --> I
+    H --> J["guided_grating/ COMSOL 数据管线"]
+```
+
 `thinfilm/` 当前重点模块：
 
 ```text

@@ -19,23 +19,27 @@ python run_teaching_demo.py --list
 python cases/teaching/run_teaching_demo.py --list
 ```
 
-## 分组
+## 总索引
 
-- `teaching/`：教学主树、教学验证和性能总包。
-- `guided_grating/`：光栅波导支线。
-- `advanced_ar/`：高级减反、多孔双层、rugate 表格。
-- `absorbing_surface/`：粗糙/准随机吸收表面。
-- `tamm/`：Tamm 相位、候选对和界面窗口分析。
-- `pdrc/`：PDRC 被动日间辐射冷却模块。
-- `frontier/`：前沿研究模型树。
+| 专题 | 定位 | 稳定入口 | 说明页 |
+| --- | --- | --- | --- |
+| `teaching/` | 教学主树、教学验证和性能总包 | `python run_teaching_demo.py --list` | `teaching/README.md` |
+| `guided_grating/` | 光栅波导支线，读取 COMSOL 光谱并提取峰位/FWHM | `python run_guided_grating_demo.py` | `guided_grating/README.md` |
+| `advanced_ar/` | 高级减反、多孔双层、蛾眼和 rugate 表格 | `python run_advanced_ar_bundle.py` | `advanced_ar/README.md` |
+| `absorbing_surface/` | 粗糙/准随机吸收表面增强分析 | `python run_absorbing_surface_topic_bundle.py` | `absorbing_surface/README.md` |
+| `tamm/` | Tamm 相位、候选参数和界面态窗口分析 | `python run_tamm_phase_bundle.py` | `tamm/README.md` |
+| `pdrc/` | PDRC 被动日间辐射冷却光谱调控 | `python run_pdrc_cooling_bundle.py` | `pdrc/README.md` |
+| `frontier/` | 前沿研究模型树 | `python run_frontier_model_tree.py --show` | `frontier/README.md` |
 
 ## 案例说明页约定
 
 具体案例文件夹主要承担“展示说明”的职责，不一定每个文件夹都有独立 Python 脚本。许多平面膜案例由 `thinfilm/education.py` 统一定义，并通过 `run_teaching_demo.py --case <case_id>` 调用。
 
-每个案例 README 优先回答四个问题：
+每个案例 README 优先按六段式组织：
 
-1. 这个案例的物理对象是什么。
-2. 推荐比较哪些输出量。
-3. COMSOL 或实验 CSV 应该导出什么。
-4. Python 侧如何运行和判断结果。
+1. 物理对象。
+2. 结构参数。
+3. 推荐比较量。
+4. COMSOL 导出要求。
+5. Python 运行方式。
+6. 结果判断。

@@ -24,6 +24,18 @@ run_tamm_interface_window_scan.py
 专题说明页：
 
 ```text
+// 技术分析页
 phase_scan/
 interface_window/
+
+// 展示叙事页
+tamm_absorber_baseline/
+tamm_phase_transition/
+tamm_interface_state/
 ```
+
+推荐展示顺序：
+
+1. `tamm_absorber_baseline/`：先说明普通 Tamm 吸收器和候选吸收峰。
+2. `tamm_phase_transition/`：再说明反射相位、相位跃迁和参数分类。
+3. `tamm_interface_state/`：最后说明左右参数拼接后，如何判断界面局域态。
