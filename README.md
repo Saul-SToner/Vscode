@@ -62,6 +62,17 @@ guided_grating/     光栅波导支线函数库
 
 根目录入口会通过 `_entrypoint_runner.py` 转发到 `cases/` 内部脚本。这样旧命令仍然稳定，同时仓库展示层也能按专题和案例阅读。
 
+`data/` 当前按数据来源分为三层：
+
+```text
+data/real_nk/        RefractiveIndex.INFO 真实材料 n(lambda), k(lambda)
+data/real_spectrum/  公开实测反射谱数据说明与后续接入口
+data/comsol/         COMSOL 导出数据的专题说明
+data/theory/         Python TMM 生成理论谱线说明
+```
+
+推荐对外表述为：理论数据用于验证算法，COMSOL 数据用于验证复杂结构，公开真实数据用于引入真实材料色散和真实测量谱线。
+
 ## 2.1 模块路线图
 
 ```mermaid
@@ -80,6 +91,8 @@ flowchart LR
     G --> I
     H --> J["guided_grating/ COMSOL 数据管线"]
 ```
+
+PDRC 第一版当前已形成两个可展示候选：`d_TiO2 = 340 nm` 的平衡版和 `d_TiO2 = 440 nm` 的高性能版。两者都满足太阳波段平均低吸收与 `8-13 um` 红外窗口高发射的第一版标准。
 
 `thinfilm/` 当前重点模块：
 

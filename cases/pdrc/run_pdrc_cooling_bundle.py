@@ -12,7 +12,7 @@ from pathlib import Path
 
 import numpy as np
 
-from thinfilm import export_pdrc_cooling_outputs
+from thinfilm import export_pdrc_comsol_candidates, export_pdrc_cooling_outputs
 from thinfilm.io import load_spectrum_csv
 from thinfilm.paths import output_file
 
@@ -83,12 +83,72 @@ def build_parser() -> argparse.ArgumentParser:
         default=r"C:\Users\L2791\OneDrive\Desktop\deg.p\pdrc_ir_window_Ag500.csv",
         help="可选：COMSOL 8-13 um 全局计算表，用于导出窗口摘要。",
     )
+    parser.add_argument(
+        "--analyze-comsol-candidates",
+        action="store_true",
+        help="分析多段 COMSOL 参数扫描 CSV，导出 PDRC 候选指标表和图。",
+    )
+    parser.add_argument(
+        "--ir-csv",
+        action="append",
+        default=[],
+        help="PDRC 红外窗口扫描 CSV，可重复传入多段文件。",
+    )
+    parser.add_argument(
+        "--solar-csv",
+        default=None,
+        help="PDRC 太阳波段候选 CSV，用于计算 A_solar_avg 和 cooling_score。",
+    )
+    parser.add_argument(
+        "--parameter-selector",
+        default="d_TiO2",
+        help="COMSOL 参数列名选择器；多参数联合扫描可用逗号分隔，例如 d_SiO2_1,d_SiO2_2。",
+    )
+    parser.add_argument(
+        "--parameter-label",
+        default="d_TiO2_equal_nm",
+        help="导出表中的参数列名；多参数时也用逗号分隔，例如 d_SiO2_1_nm,d_SiO2_2_nm。",
+    )
+    parser.add_argument(
+        "--solar-weight-mode",
+        default="blackbody_5778K",
+        help="太阳光谱加权模式，默认 blackbody_5778K；可用 none 关闭。",
+    )
+    parser.add_argument(
+        "--solar-weight-csv",
+        default=None,
+        help="可选太阳光谱权重 CSV，列名建议 lambda_um/irradiance 或 lambda_nm/irradiance。",
+    )
+    parser.add_argument(
+        "--total-dielectric-base-nm",
+        type=float,
+        default=1800.0,
+        help="除两层等厚 TiO2 外的介质总厚度，默认 200+600+1000 nm。",
+    )
     return parser
 
 
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
+
+    if bool(args.analyze_comsol_candidates):
+        if not args.ir_csv:
+            parser.error("--analyze-comsol-candidates 需要至少一个 --ir-csv")
+        candidate_files = export_pdrc_comsol_candidates(
+            ir_csv_files=[str(item) for item in args.ir_csv],
+            solar_csv_file=str(args.solar_csv) if args.solar_csv else None,
+            prefix=str(args.prefix),
+            parameter_selector=str(args.parameter_selector),
+            parameter_label=str(args.parameter_label),
+            total_dielectric_base_nm=float(args.total_dielectric_base_nm),
+            solar_weight_mode=str(args.solar_weight_mode),
+            solar_weight_csv=str(args.solar_weight_csv) if args.solar_weight_csv else None,
+        )
+        print("PDRC COMSOL 候选分析总包已导出")
+        for key, value in candidate_files.items():
+            print(f"{key}: {value}")
+        return
 
     files = export_pdrc_cooling_outputs(
         prefix=str(args.prefix),

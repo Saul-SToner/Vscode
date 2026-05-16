@@ -22,18 +22,21 @@ Air / SiO2_1 / TiO2_1 / SiO2_2 / TiO2_2 / SiO2_3 / Ag / substrate
 
 ```text
 d_SiO2_1 = 200 nm  # 红外细扫当前最佳附近
-d_TiO2_1 = 80 nm
 d_SiO2_2 = 600 nm
-d_TiO2_2 = 80 nm
 d_SiO2_3 = 1.0 um
 d_Ag = 500 nm
 ```
 
-下一步优先扫描：
+第一版保留两个候选：
 
 ```text
-d_SiO2_2 = range(300[nm], 50[nm], 1200[nm])
-lam = range(8[um], 0.1[um], 13[um])
+平衡版：
+d_TiO2_1 = d_TiO2_2 = 340 nm
+total_dielectric_thickness = 2.48 um
+
+高性能版：
+d_TiO2_1 = d_TiO2_2 = 440 nm
+total_dielectric_thickness = 2.68 um
 ```
 
 ## 3. 推荐比较量
@@ -60,7 +63,8 @@ lam = range(8[um], 0.1[um], 13[um])
 ```text
 pdrc_real_materials_solar_0p3_2p5.csv
 pdrc_real_materials_ir_8_13.csv
-pdrc_scan_dSiO2_2_ir.csv
+pdrc_scan_dTiO2_equal_ir_40_440_full_summary.csv
+pdrc_candidates_340_440_final_metrics.csv
 ```
 
 ## 5. Python 运行方式
@@ -70,19 +74,80 @@ python run_pdrc_cooling_bundle.py
 python run_pdrc_cooling_bundle.py --comsol-csv "path/to/pdrc_ir.csv"
 ```
 
+候选扫描分析：
+
+```bash
+python run_pdrc_cooling_bundle.py --analyze-comsol-candidates \
+  --prefix pdrc_candidates \
+  --ir-csv "path/to/ir_part1.csv" \
+  --ir-csv "path/to/ir_part2.csv" \
+  --solar-csv "path/to/solar_candidates.csv"
+```
+
+默认太阳光谱加权：
+
+```bash
+--solar-weight-mode blackbody_5778K
+```
+
+如果已有 ASTM G173 / AM1.5 光谱 CSV，可替换为：
+
+```bash
+--solar-weight-csv "path/to/solar_spectrum.csv"
+```
+
+对应 Python API：
+
+```python
+from thinfilm import export_pdrc_comsol_candidates
+
+export_pdrc_comsol_candidates(
+    ir_csv_files=["path/to/ir_part1.csv", "path/to/ir_part2.csv"],
+    solar_csv_file="path/to/solar_candidates.csv",
+    prefix="pdrc_candidates",
+)
+```
+
+多参数联合扫描也可以直接读，例如同时扫描 `d_SiO2_1` 和 `d_SiO2_2`：
+
+```bash
+python run_pdrc_cooling_bundle.py --analyze-comsol-candidates \
+  --prefix pdrc_scan_sio2_1_2_final \
+  --parameter-selector d_SiO2_1,d_SiO2_2 \
+  --parameter-label d_SiO2_1_nm,d_SiO2_2_nm \
+  --ir-csv "path/to/pdrc_scan_sio2_1_2_ir.csv" \
+  --solar-csv "path/to/pdrc_scan_sio2_1_2_solar_candidates.csv"
+```
+
+下一轮 COMSOL 扫描建议见：
+
+```text
+cases/pdrc/pdrc_multilayer_cooling/next_scan_plan.md
+```
+
 ## 6. 结果判断
 
 第一版成功标准可以设为 `A_solar_avg < 0.15` 且 `epsilon_8_13_avg > 0.70`。如果红外平均发射率不足，优先扫描 SiO2 和 TiO2 层厚。
 
-当前已知趋势：
+第一版候选结果：
 
 ```text
-d_SiO2_1 单参数细扫最佳约在 200 nm
-epsilon_8_13_avg 约为 0.684
-主要短板是 8.9 um 附近存在低谷
+平衡版：d_TiO2 = 340 nm
+A_solar_avg = 0.0327
+A_solar_weighted = 0.0454
+R_solar_avg = 0.9673
+epsilon_8_13_avg = 0.7220
+cooling_score_weighted = 0.6766
+
+高性能版：d_TiO2 = 440 nm
+A_solar_avg = 0.0355
+A_solar_weighted = 0.0524
+R_solar_avg = 0.9645
+epsilon_8_13_avg = 0.7369
+cooling_score_weighted = 0.6845
 ```
 
-因此继续单独细扫 `d_SiO2_1` 收益不大，下一步更应扫描 `d_SiO2_2` 或 TiO2 层厚来抬高 `8-10 um` 区间。
+两者都满足 `A_solar_avg < 0.15`、`A_solar_weighted < 0.15` 和 `epsilon_8_13_avg > 0.70`。需要说明的是，太阳波段短波端 `0.32 um` 附近存在局部吸收峰，但加权平均太阳吸收仍然较低；后续可用 ASTM G173 / AM1.5 标准光谱替换当前 `blackbody_5778K` 近似权重。
 
 ## 7. data 与 outputs 约定
 

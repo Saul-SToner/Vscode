@@ -26,6 +26,10 @@ from .roadmap import (
     list_frontier_research_module_ids,
     list_teaching_case_expansion_ids,
 )
+from .pdrc import (
+    analyze_pdrc_comsol_candidates,
+    export_pdrc_comsol_candidate_bundle,
+)
 from .validation import (
     analyze_tamm_interface_2d_window_csv,
     analyze_tamm_dw_phase_scan,
@@ -189,6 +193,22 @@ def export_pdrc_cooling_outputs(
 ) -> Dict[str, str]:
     """Export spectrum, metrics and plot for the PDRC cooling module."""
     return export_pdrc_cooling_bundle(**kwargs)
+
+
+def analyze_pdrc_comsol_candidate_scan(
+    ir_csv_files: list[str],
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    """Analyze merged PDRC COMSOL IR/solar candidate scans."""
+    return analyze_pdrc_comsol_candidates(ir_csv_files=ir_csv_files, **kwargs)
+
+
+def export_pdrc_comsol_candidates(
+    ir_csv_files: list[str],
+    **kwargs: Any,
+) -> Dict[str, str]:
+    """Export merged PDRC COMSOL candidate metrics and plots."""
+    return export_pdrc_comsol_candidate_bundle(ir_csv_files=ir_csv_files, **kwargs)
 
 
 def analyze_tamm_interface_window(
