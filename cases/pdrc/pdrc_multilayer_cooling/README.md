@@ -18,25 +18,24 @@ emissivity(lambda) ~= absorptivity(lambda) = A(lambda)
 Air / SiO2_1 / TiO2_1 / SiO2_2 / TiO2_2 / SiO2_3 / Ag / substrate
 ```
 
-当前建议基准参数：
+当前锁定主候选：
 
 ```text
-d_SiO2_1 = 200 nm  # 红外细扫当前最佳附近
-d_SiO2_2 = 600 nm
+d_SiO2_1 = 200 nm
+d_TiO2_1 = 440 nm
+d_SiO2_2 = 500 nm
+d_TiO2_2 = 440 nm
 d_SiO2_3 = 1.0 um
 d_Ag = 500 nm
 ```
 
-第一版保留两个候选：
+保留一个红外最高对照：
 
 ```text
-平衡版：
-d_TiO2_1 = d_TiO2_2 = 340 nm
-total_dielectric_thickness = 2.48 um
-
-高性能版：
+对照候选：
+d_SiO2_1 = 240 nm
+d_SiO2_2 = 600 nm
 d_TiO2_1 = d_TiO2_2 = 440 nm
-total_dielectric_thickness = 2.68 um
 ```
 
 ## 3. 推荐比较量
@@ -63,6 +62,8 @@ total_dielectric_thickness = 2.68 um
 ```text
 pdrc_real_materials_solar_0p3_2p5.csv
 pdrc_real_materials_ir_8_13.csv
+pdrc_real_materials_solar_valid.csv
+pdrc_real_materials_ir_valid.csv
 pdrc_scan_dTiO2_equal_ir_40_440_full_summary.csv
 pdrc_candidates_340_440_final_metrics.csv
 ```
@@ -90,10 +91,10 @@ python run_pdrc_cooling_bundle.py --analyze-comsol-candidates \
 --solar-weight-mode blackbody_5778K
 ```
 
-如果已有 ASTM G173 / AM1.5 光谱 CSV，可替换为：
+当前正式结果使用 ASTM G173-03 AM1.5 global tilt 光谱 CSV：
 
 ```bash
---solar-weight-csv "path/to/solar_spectrum.csv"
+--solar-weight-csv "data/real_spectrum/astm_g173_am15/astm_g173_am15_global_tilt.csv"
 ```
 
 对应 Python API：
@@ -129,25 +130,24 @@ cases/pdrc/pdrc_multilayer_cooling/next_scan_plan.md
 
 第一版成功标准可以设为 `A_solar_avg < 0.15` 且 `epsilon_8_13_avg > 0.70`。如果红外平均发射率不足，优先扫描 SiO2 和 TiO2 层厚。
 
-第一版候选结果：
+真实材料验证最终候选结果：
 
 ```text
-平衡版：d_TiO2 = 340 nm
-A_solar_avg = 0.0327
-A_solar_weighted = 0.0454
-R_solar_avg = 0.9673
-epsilon_8_13_avg = 0.7220
-cooling_score_weighted = 0.6766
+主候选：d_SiO2_1 = 200 nm, d_SiO2_2 = 500 nm
+A_solar_avg = 0.0466
+A_solar_weighted(ASTM G173) = 0.0435
+R_solar_weighted(ASTM G173) = 0.9565
+epsilon_8_13_avg = 0.8044
+cooling_score_weighted(ASTM G173) = 0.7609
 
-高性能版：d_TiO2 = 440 nm
-A_solar_avg = 0.0355
-A_solar_weighted = 0.0524
-R_solar_avg = 0.9645
-epsilon_8_13_avg = 0.7369
-cooling_score_weighted = 0.6845
+历史扫描中的红外最高对照：d_SiO2_1 = 240 nm, d_SiO2_2 = 600 nm
+A_solar_avg = 0.0401
+A_solar_weighted(ASTM G173) = 0.0389
+epsilon_8_13_avg = 0.8011
+cooling_score_weighted(ASTM G173) = 0.7621
 ```
 
-两者都满足 `A_solar_avg < 0.15`、`A_solar_weighted < 0.15` 和 `epsilon_8_13_avg > 0.70`。需要说明的是，太阳波段短波端 `0.32 um` 附近存在局部吸收峰，但加权平均太阳吸收仍然较低；后续可用 ASTM G173 / AM1.5 标准光谱替换当前 `blackbody_5778K` 近似权重。
+主候选满足 `A_solar_avg < 0.15`、`A_solar_weighted < 0.15`、`R_solar_weighted > 0.90` 和 `epsilon_8_13_avg > 0.70`。展示主线采用最新 `pdrc_real_materials_solar_valid.csv` 与 `pdrc_real_materials_ir_valid.csv` 的验证结果；历史扫描中的红外最高对照只作为早期参数筛选参考。需要说明的是，太阳波段短波端存在局部吸收峰，但按 ASTM G173-03 AM1.5 global tilt 加权后，平均太阳吸收仍然较低。
 
 ## 7. data 与 outputs 约定
 

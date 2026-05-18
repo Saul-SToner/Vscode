@@ -32,6 +32,31 @@ RefractiveIndex.INFO 数据库文件声明为 public domain / CC0，可用于复
 
 这些文件优先用于教学主树、高反膜、F-P、Tamm 可见/近红外版本和材料色散演示。若用于中红外 PDRC 或 4-5 um Tamm，需要确认材料数据覆盖对应波段；例如 Johnson-Christy Au/Ag 不覆盖中红外长波段。
 
+## Python 统一入口
+
+```python
+from thinfilm import list_real_materials, material_nk_at, simulate_teaching_design_real_materials
+
+materials = list_real_materials()
+n, k = material_nk_at("SiO2", 0.55)
+
+result = simulate_teaching_design_real_materials(
+    "bragg_reflector",
+    material_map={
+        "n_incident": "Air",
+        "n_low": "SiO2",
+        "n_high_2": "TiO2",
+        "n_substrate": "SiO2",
+    },
+)
+```
+
+命令行演示：
+
+```bash
+python run_material_library_demo.py
+```
+
 ## 生成方式
 
 公式型 YAML 数据按有效波段采样为 CSV，表格型 `nk` 数据保留原始采样点。`manifest.json` 记录每个文件的来源 URL、行数和波长范围。

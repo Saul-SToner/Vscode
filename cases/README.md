@@ -30,6 +30,7 @@ python cases/teaching/run_teaching_demo.py --list
 | `tamm/` | Tamm 相位、候选参数和界面态窗口分析 | `python run_tamm_phase_bundle.py` | `tamm/README.md` |
 | `pdrc/` | PDRC 被动日间辐射冷却光谱调控 | `python run_pdrc_cooling_bundle.py` | `pdrc/README.md` |
 | `frontier/` | 前沿研究模型树 | `python run_frontier_model_tree.py --show` | `frontier/README.md` |
+| `materials/` | 真实材料 n(lambda), k(lambda) 统一读取、插值与示例对比 | `python run_material_library_demo.py` | `materials/README.md` |
 
 ## 案例说明页约定
 

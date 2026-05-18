@@ -15,6 +15,16 @@ from .education import (
     simulate_report_case,
     simulate_report_chapter2_suite,
     simulate_report_design,
+    simulate_report_design_real_materials,
+)
+from .materials import (
+    common_wavelength_window_um,
+    export_real_material_library,
+    list_real_materials,
+    load_real_material,
+    material_complex_index,
+    material_nk_at,
+    sample_real_materials,
 )
 from .roadmap import (
     export_frontier_research_model_tree,
@@ -67,6 +77,21 @@ def simulate_teaching_design(
 ) -> Dict[str, Any]:
     """APP-facing wrapper for the report-style forward thin-film simulator."""
     return simulate_report_design(design_type=design_type, **kwargs)
+
+
+def simulate_teaching_design_real_materials(
+    design_type: str,
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    """APP-facing wrapper for real-dispersion teaching TMM simulations."""
+    return simulate_report_design_real_materials(design_type=design_type, **kwargs)
+
+
+def export_real_material_library_outputs(
+    **kwargs: Any,
+) -> Dict[str, str]:
+    """Export real-material catalog, sampled n/k table, and overview plot."""
+    return export_real_material_library(**kwargs)
 
 
 def list_teaching_cases() -> list[dict[str, Any]]:

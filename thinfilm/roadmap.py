@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List
 
+import matplotlib.pyplot as plt
+
 from .paths import output_file
+from .plotting import BLUE, GREEN, INK, MUTED, PAPER, PANEL, RED, style_axis
 
 
 TEACHING_CASE_EXPANSION_ROADMAP: List[Dict[str, Any]] = [
@@ -169,14 +172,14 @@ FRONTIER_RESEARCH_MODEL_TREE: List[Dict[str, Any]] = [
                     "随着 d_W 增大，吸收峰位轻微向短波移动，相位信息已具备进入拓扑分类的最小分析条件。",
                     "当前整体相位对比最强的候选对为 90 nm 与 120 nm。",
                     "当前峰处相位差最大的高吸收候选对为 110 nm 与 120 nm。",
-                    "真二维场数据已覆盖 d_W,L = 110~130 nm 与 4.50/4.55/4.60 μm，线切证据不足的问题已被排除。",
-                    "按二维局域窗口判据，d_W,L = 119 nm, d_W,R = 120 nm, λ = 4.55 μm 是当前默认界面态候选点。",
-                    "该候选点界面增强因子 G_interface 约 5.14，热点中心接近 x = 0，最大场点基本落在界面附近。",
+                    "已建立 cutline 界面态候选判据：interface/background、peak/background、hotspot_peak_x 与 FWHM。",
+                    "119/120 nm @ 4.55 μm 三条 y 位置 cutline 均显示 interface/background≈0.965、FWHM≈11.6 μm，不支持强界面局域态。",
+                    "100~130 nm 左右厚度 49 组筛选与 130/130 nm 波长扫描均未发现满足界面局域判据的正候选。",
                 ],
                 "next_actions_cn": [
-                    "固定 d_W 代表点，提取 4.2~5.0 μm 区间的反射相位曲线。",
-                    "默认先围绕 119/120 nm @ 4.55 μm 做界面态证据整理，保留 110/120 与 121/120 作为相邻对照组。",
-                    "后续可在 4.53~4.57 μm 做更细波长扫描，确认界面增强峰是否集中在 4.55 μm 附近。",
+                    "暂停直接拼接相近厚度的 2D 猜测式扫描。",
+                    "回到 1D 反射相位筛选，寻找同一波长下 R 较高且 arg(S11) 相差接近 π 的两种端结构。",
+                    "只有找到相位差明确的左右端结构后，再做 2D 拼接 cutline 或场图验证。",
                 ],
             },
             {
@@ -184,18 +187,20 @@ FRONTIER_RESEARCH_MODEL_TREE: List[Dict[str, Any]] = [
                 "title_cn": "拓扑 Tamm 边界态与空间调控",
                 "title_en": "Topological Tamm Boundary State and Spatial Control",
                 "priority": 3,
-                "status": "ready_to_start",
+                "status": "screening_negative",
                 "goal_cn": "构造两类不同拓扑反射表面的界面，验证边界态局域化与热辐射空间调控潜力。",
                 "suitable_backend_cn": ["二维或更高维 COMSOL 模型", "界面场分布与局域增强分析"],
                 "core_outputs_cn": ["界面场分布", "局域化强度", "界面热辐射空间分布", "边界态存在性证据"],
                 "current_progress_cn": [
-                    "已完成第一批真二维界面场数据的局域量化。",
-                    "当前默认候选点为 d_W,L = 119 nm, d_W,R = 120 nm, λ = 4.55 μm。",
+                    "已完成 119/120 nm @ 4.55 μm 三条 cutline 验证。",
+                    "已完成 d_W,L/d_W,R = 100~130 nm 的 49 组 cutline 筛选。",
+                    "已完成 130/130 nm 在 4.45~4.75 μm 的波长 cutline 扫描。",
+                    "当前所有已测候选均未满足 interface/background > 1.5、|peak_x| < 0.5 μm、FWHM < 5 μm 的正候选判据。",
                 ],
                 "next_actions_cn": [
-                    "围绕 119/120 nm @ 4.55 μm 输出二维场图、界面窗口占比和局域增强摘要。",
-                    "补充 4.53~4.57 μm 细扫或相邻厚度对照，以确认该候选点不是单点偶然。",
-                    "在界面态候选证据稳定后，再推进热辐射空间分布表达。",
+                    "将当前阶段定位为界面态量化判据建立与反例排除，不作为正界面态结果。",
+                    "下一轮若继续追正结果，应先做 1D phase scan：d_W=80~160 nm、λ=4.3~4.9 μm，筛选反射相位差接近 π 的左右端结构。",
+                    "找到相位端结构后，再进入 2D 拼接验证，而不是继续围绕 119/120 或 130/130 做局部微调。",
                 ],
             },
         ],
@@ -205,9 +210,28 @@ FRONTIER_RESEARCH_MODEL_TREE: List[Dict[str, Any]] = [
         "title_cn": "被动日间辐射冷却薄膜光谱调控",
         "title_en": "Passive Daytime Radiative Cooling Multilayer Spectral Control",
         "module_type": "frontier_application",
-        "goal_cn": "构建兼具太阳波段高反射与 8-13 μm 大气窗口高发射的薄膜结构，形成可由 Python TMM 快速筛选、再由 COMSOL 代表点验证的 PDRC 模块。",
-        "why_cn": "该模块仍以平面多层膜为第一入口，能复用现有薄膜理论平台，同时把应用目标从可见光减反/滤光扩展到热辐射冷却。",
-        "status": "in_progress",
+        "goal_cn": "构建兼具太阳波段高反射与 8-13 μm 大气窗口高发射的薄膜结构，形成由 COMSOL 宽波段扫描与 Python 指标筛选共同支撑的 PDRC 模块。",
+        "why_cn": "该模块以平面多层膜为第一入口，复用现有薄膜理论平台，同时把应用目标从可见光减反/滤光扩展到热辐射冷却。",
+        "status": "real_material_validated",
+        "selected_candidate_cn": {
+            "structure_cn": "Air / SiO2_1 / TiO2_1 / SiO2_2 / TiO2_2 / SiO2_3 / Ag / substrate",
+            "thicknesses_nm": {
+                "d_SiO2_1": 200.0,
+                "d_TiO2_1": 440.0,
+                "d_SiO2_2": 500.0,
+                "d_TiO2_2": 440.0,
+                "d_SiO2_3": 1000.0,
+                "d_Ag": 500.0,
+            },
+            "metrics": {
+                "A_solar_avg": 0.0466,
+                "A_solar_weighted_astm_g173_am15_global": 0.0435,
+                "R_solar_weighted_astm_g173_am15_global": 0.9565,
+                "epsilon_8_13_avg": 0.8044,
+                "cooling_score_weighted_astm_g173": 0.7609,
+            },
+            "note_cn": "该候选已完成太阳波段与 8-13 μm 红外窗口真实材料验证，适合作为 PDRC 平面膜第一版主结果。",
+        },
         "stages": [
             {
                 "stage_id": "pdrc_tmm_wideband_screening",
@@ -220,29 +244,37 @@ FRONTIER_RESEARCH_MODEL_TREE: List[Dict[str, Any]] = [
                 "core_outputs_cn": ["R(λ)", "T(λ)", "A(λ)", "emissivity(λ)≈A(λ)", "A_solar_avg", "epsilon_8_13_avg", "cooling_score"],
                 "current_progress_cn": [
                     "已接入 pdrc_multilayer_cooling 独立模块，不放入教学主树首页。",
-                    "第一版结构已对齐 COMSOL 2D 平面层模型：SiO2_1=1.2 um、TiO2_1=80 nm、SiO2_2=600 nm、TiO2_2=80 nm、SiO2_3=1.0 um、Ag=500 nm。",
+                    "第一版结构已对齐 COMSOL 2D 平面层模型，并完成真实材料宽波段 R/T/A 导出。",
                     "已支持导出 spectrum.csv、metrics.csv、summary.json、summary.txt 和宽波段图。",
-                    "第一版使用内置有效光学常数近似，便于先跑通平台流程。",
+                    "TMM 快速筛选保留为辅助入口，展示主结果以 COMSOL 真实材料扫描和 Python 指标筛选为准。",
                 ],
                 "next_actions_cn": [
-                    "用实测或文献 n,k 数据替换当前内置有效光学常数。",
-                    "围绕 SiO2 发射层厚度和 TiO2/SiO2 干涉层厚度做参数优化。",
-                    "用 0.5、1.0、1.5、8、10、12 μm 六个代表点做 COMSOL 交叉验证。",
+                    "已接入 ASTM G173-03 AM1.5 global tilt 标准太阳光谱权重；blackbody_5778K 仅保留为无外部数据时的快速近似。",
+                    "保留当前 TMM 版本作为快速教学演示，不再把它作为最终 PDRC 性能结论。",
                 ],
             },
             {
                 "stage_id": "pdrc_comsol_representative_validation",
-                "title_cn": "COMSOL 代表点验证",
-                "title_en": "COMSOL Representative-Point Validation",
+                "title_cn": "COMSOL 宽波段参数扫描与候选筛选",
+                "title_en": "COMSOL Wideband Parameter Scan and Candidate Selection",
                 "priority": 2,
-                "status": "ready_to_start",
-                "goal_cn": "在固定结构下验证太阳波段低吸收点和大气窗口高发射点，避免一上来做超大宽波段 COMSOL 扫描。",
-                "suitable_backend_cn": ["COMSOL 单波长或少量代表点", "Python 与 COMSOL R/T/A 对照"],
-                "core_outputs_cn": ["代表点 R/T/A", "Python-COMSOL 偏差", "边界条件与材料设置检查"],
+                "status": "real_material_validated",
+                "goal_cn": "通过 COMSOL 导出太阳波段与 8-13 μm 红外窗口 R/T/A，再由 Python 合并多段扫描、计算太阳加权吸收和窗口平均发射率。",
+                "suitable_backend_cn": ["COMSOL 2D 平面多层膜", "Python COMSOL CSV 合并、去重、指标筛选与出图"],
+                "core_outputs_cn": ["A_solar_avg", "A_solar_weighted", "epsilon_8_13_avg", "cooling_score_weighted", "候选参数表", "二维参数散点图"],
+                "current_progress_cn": [
+                    "已完成 d_TiO2 等厚扫描，并锁定 d_TiO2_1=d_TiO2_2=440 nm 作为后续 SiO2 微调基准。",
+                    "已完成 d_SiO2_1 / d_SiO2_2 粗扫与候选太阳波段复核。",
+                    "最终主候选为 d_SiO2_1=200 nm、d_SiO2_2=500 nm、d_TiO2_1=d_TiO2_2=440 nm、d_SiO2_3=1000 nm、Ag=500 nm。",
+                    "真实材料验证指标：A_solar_avg=0.0466、A_solar_weighted(ASTM G173)=0.0435、R_solar_weighted=0.9565、epsilon_8_13_avg=0.8044、cooling_score_weighted(ASTM G173)=0.7609。",
+                    "太阳波段 0.3-2.5 μm 使用真实材料有效波段导出，ASTM G173 加权吸收为 0.0435。",
+                    "红外窗口 8-13 μm 使用 COMSOL 中红外 n,k，平均发射率为 0.8044。",
+                    "历史红外最高对照候选为 d_SiO2_1=240 nm、d_SiO2_2=600 nm，epsilon_8_13_avg=0.8011，仅作为早期筛选参考。",
+                ],
                 "next_actions_cn": [
-                    "先导出 0.5、1.0、1.5、8、10、12 μm 六个点的 R、T、A。",
-                    "若 Ag 足够厚，可把 T 近似为 0，并重点检查 A=1-R 是否成立。",
-                    "确认代表点吻合后，再考虑增加参数扫描。",
+                    "停止继续大规模扫参，转入结果整理、冷却功率模型或汇报图表输出。",
+                    "在文档中明确当前标准太阳加权使用 ASTM G173-03 AM1.5 global tilt。",
+                    "保留 240/600 nm 作为红外最高对照，不作为主候选。",
                 ],
             },
             {
@@ -317,6 +349,182 @@ def list_frontier_research_module_ids() -> List[str]:
     return [str(module["module_id"]) for module in FRONTIER_RESEARCH_MODEL_TREE]
 
 
+def _status_color(status: str) -> str:
+    key = str(status).lower()
+    if key in {"implemented", "phase_complete", "first_version_locked", "real_material_validated"}:
+        return GREEN
+    if key in {"screening_negative"}:
+        return RED
+    if key in {"in_progress", "ready_to_start"}:
+        return BLUE
+    return MUTED
+
+
+def _draw_box(
+    ax: plt.Axes,
+    *,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    title: str,
+    subtitle: str = "",
+    color: str = BLUE,
+    fontsize: float = 9.2,
+) -> None:
+    from matplotlib.patches import FancyBboxPatch
+
+    box = FancyBboxPatch(
+        (x, y),
+        w,
+        h,
+        boxstyle="round,pad=0.018,rounding_size=0.025",
+        linewidth=1.35,
+        edgecolor=color,
+        facecolor=PANEL,
+        alpha=0.98,
+    )
+    ax.add_patch(box)
+    ax.text(x + w / 2, y + h * 0.62, title, ha="center", va="center", fontsize=fontsize, fontweight="semibold", color=INK)
+    if subtitle:
+        ax.text(x + w / 2, y + h * 0.28, subtitle, ha="center", va="center", fontsize=fontsize - 1.2, color=MUTED)
+
+
+def _draw_arrow(ax: plt.Axes, start: tuple[float, float], end: tuple[float, float], *, color: str = MUTED) -> None:
+    ax.annotate(
+        "",
+        xy=end,
+        xytext=start,
+        arrowprops={"arrowstyle": "->", "linewidth": 1.25, "color": color, "shrinkA": 4, "shrinkB": 4},
+    )
+
+
+def _export_frontier_model_tree_png(roadmap: Dict[str, Any], *, prefix: str) -> str:
+    png_path = output_file(f"{prefix}.png")
+    fig, ax = plt.subplots(figsize=(14.5, 8.2))
+    fig.patch.set_facecolor(PAPER)
+    ax.set_facecolor(PAPER)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis("off")
+
+    ax.text(0.5, 0.955, "前沿研究模型树", ha="center", va="center", fontsize=18, fontweight="semibold", color=INK)
+    ax.text(
+        0.5,
+        0.91,
+        "PDRC 为当前正结果模块；Tamm 已完成界面态判据与反例筛选，下一步转向 1D 反射相位端结构设计。",
+        ha="center",
+        va="center",
+        fontsize=10.5,
+        color=MUTED,
+    )
+
+    modules = roadmap["modules"]
+    y_positions = [0.58, 0.25]
+    for module, y in zip(modules, y_positions):
+        module_color = _status_color(str(module["status"]))
+        _draw_box(
+            ax,
+            x=0.035,
+            y=y,
+            w=0.23,
+            h=0.19,
+            title=str(module["title_cn"]),
+            subtitle=f"状态：{module['status']}",
+            color=module_color,
+            fontsize=9.4,
+        )
+        stages = list(module["stages"])
+        stage_xs = [0.33, 0.56, 0.79]
+        for idx, (stage, sx) in enumerate(zip(stages, stage_xs)):
+            stage_color = _status_color(str(stage["status"]))
+            _draw_box(
+                ax,
+                x=sx,
+                y=y + 0.02,
+                w=0.17,
+                h=0.15,
+                title=str(stage["title_cn"]),
+                subtitle=f"{stage['status']}",
+                color=stage_color,
+                fontsize=8.5,
+            )
+            if idx == 0:
+                _draw_arrow(ax, (0.265, y + 0.095), (sx, y + 0.095))
+            else:
+                _draw_arrow(ax, (stage_xs[idx - 1] + 0.17, y + 0.095), (sx, y + 0.095))
+
+    legend_items = [
+        ("locked / complete", GREEN),
+        ("in progress", BLUE),
+        ("negative screening", RED),
+        ("planned", MUTED),
+    ]
+    lx = 0.06
+    for label, color in legend_items:
+        ax.scatter([lx], [0.085], s=90, color=color)
+        ax.text(lx + 0.022, 0.085, label, va="center", ha="left", fontsize=9, color=INK)
+        lx += 0.21
+
+    fig.savefig(png_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    return str(png_path)
+
+
+def _export_teaching_expansion_tree_png(roadmap: Dict[str, Any], *, prefix: str) -> str:
+    png_path = output_file(f"{prefix}.png")
+    fig, ax = plt.subplots(figsize=(14.5, 7.6))
+    fig.patch.set_facecolor(PAPER)
+    ax.set_facecolor(PAPER)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis("off")
+
+    ax.text(0.5, 0.94, "教学主树扩展路线图", ha="center", va="center", fontsize=18, fontweight="semibold", color=INK)
+    ax.text(0.5, 0.895, str(roadmap["summary_cn"]), ha="center", va="center", fontsize=10.5, color=MUTED)
+
+    groups = roadmap["groups"]
+    y_positions = [0.67, 0.43, 0.19]
+    for group, y in zip(groups, y_positions):
+        _draw_box(
+            ax,
+            x=0.035,
+            y=y,
+            w=0.19,
+            h=0.15,
+            title=str(group["title_cn"]),
+            subtitle=f"优先级 {group['priority']}",
+            color=BLUE,
+            fontsize=9.3,
+        )
+        cases = list(group["cases"])[:4]
+        if not cases:
+            continue
+        x0 = 0.29
+        gap = 0.16
+        for idx, case in enumerate(cases):
+            x = x0 + idx * gap
+            _draw_box(
+                ax,
+                x=x,
+                y=y + 0.015,
+                w=0.13,
+                h=0.12,
+                title=str(case["title_cn"]),
+                subtitle=str(case["recommended_mode"]),
+                color=GREEN if idx == 0 else MUTED,
+                fontsize=7.8,
+            )
+            if idx == 0:
+                _draw_arrow(ax, (0.225, y + 0.075), (x, y + 0.075))
+            else:
+                _draw_arrow(ax, (x0 + (idx - 1) * gap + 0.13, y + 0.075), (x, y + 0.075))
+
+    fig.savefig(png_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    return str(png_path)
+
+
 def export_teaching_case_expansion_roadmap(
     *,
     prefix: str = "teaching_case_expansion_roadmap",
@@ -346,9 +554,12 @@ def export_teaching_case_expansion_roadmap(
                 f.write(f"    说明：{case['why_cn']}\n")
             f.write("\n")
 
+    png_path = _export_teaching_expansion_tree_png(roadmap, prefix=prefix)
+
     return {
         "json": str(json_path),
         "txt": str(txt_path),
+        "png": str(png_path),
     }
 
 
@@ -400,9 +611,12 @@ def export_frontier_research_model_tree(
                         f.write(f"      * {item}\n")
             f.write("\n")
 
+    png_path = _export_frontier_model_tree_png(roadmap, prefix=prefix)
+
     return {
         "json": str(json_path),
         "txt": str(txt_path),
+        "png": str(png_path),
     }
 
 

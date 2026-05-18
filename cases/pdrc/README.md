@@ -20,7 +20,7 @@ python run_pdrc_cooling_bundle.py --analyze-comsol-candidates ^
 ```
 
 该入口会自动合并分段红外 CSV、按厚度参数去重、计算 `epsilon_8_13_avg`，并在提供太阳波段 CSV 时计算 `A_solar_avg` 和 `cooling_score`。
-默认还会使用 `blackbody_5778K` 作为太阳光谱近似权重，额外导出 `A_solar_weighted` 和 `cooling_score_weighted`。如果后续有 ASTM G173 / AM1.5 光谱 CSV，可通过 `--solar-weight-csv` 替换。
+默认会使用 `blackbody_5778K` 作为快速近似权重；当前正式 PDRC 结果已通过 `--solar-weight-csv` 接入 ASTM G173-03 AM1.5 global tilt 光谱，额外导出 `A_solar_weighted` 和 `cooling_score_weighted`。
 
 当前建议先验证：
 
@@ -29,15 +29,49 @@ python run_pdrc_cooling_bundle.py --analyze-comsol-candidates ^
 红外窗口：8-13 um 高发射
 ```
 
-当前第一版候选：
+当前真实材料验证主候选：
 
 ```text
-平衡版：d_TiO2_1 = d_TiO2_2 = 340 nm
-高性能版：d_TiO2_1 = d_TiO2_2 = 440 nm
+结构：
+Air / SiO2_1 / TiO2_1 / SiO2_2 / TiO2_2 / SiO2_3 / Ag / substrate
+
+d_SiO2_1 = 200 nm
+d_TiO2_1 = 440 nm
+d_SiO2_2 = 500 nm
+d_TiO2_2 = 440 nm
+d_SiO2_3 = 1000 nm
+d_Ag = 500 nm
+
+A_solar_avg = 0.0466
+A_solar_weighted(ASTM G173) = 0.0435
+R_solar_weighted(ASTM G173) = 0.9565
+epsilon_8_13_avg = 0.8044
+cooling_score_weighted(ASTM G173) = 0.7609
 ```
 
-两者都满足 `A_solar_avg < 0.15` 和 `epsilon_8_13_avg > 0.70`。
-按 `blackbody_5778K` 加权后也满足 `A_solar_weighted < 0.15`。
+该候选满足 `A_solar_avg < 0.15`、`A_solar_weighted < 0.15`、`R_solar_weighted > 0.90` 和 `epsilon_8_13_avg > 0.70`。当前标准太阳加权使用 ASTM G173-03 AM1.5 global tilt 光谱文件。
+
+最新有效数据：
+
+```text
+pdrc_real_materials_solar_valid.csv
+pdrc_real_materials_ir_valid.csv
+```
+
+对应处理输出位于：
+
+```text
+C:\Users\L2791\thinfilm_outputs\pdrc_real_materials_solar_valid_spectrum.png
+C:\Users\L2791\thinfilm_outputs\pdrc_real_materials_solar_valid_metrics.png
+C:\Users\L2791\thinfilm_outputs\pdrc_real_materials_ir_valid_spectrum.png
+```
+
+保留对照候选：
+
+```text
+红外最高对照：d_SiO2_1 = 240 nm, d_SiO2_2 = 600 nm
+epsilon_8_13_avg = 0.8011
+```
 
 专题说明页：
 

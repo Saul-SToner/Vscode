@@ -21,6 +21,11 @@ from typing import Any, Dict, List, Sequence
 import matplotlib.pyplot as plt
 import numpy as np
 
+from .materials import (
+    canonical_material_name,
+    common_wavelength_window_um,
+    material_complex_index,
+)
 from .paths import OUTPUT_DIR, output_file
 
 plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Noto Sans CJK SC", "Arial Unicode MS", "DejaVu Sans"]
@@ -990,6 +995,137 @@ def multilayer_rt_spectrum(
     }
 
 
+def _material_or_constant_index(
+    role: str,
+    wavelength_nm: float,
+    material_map: Dict[str, Any],
+    fallback: complex,
+    *,
+    allow_extrapolate: bool,
+) -> complex:
+    value = material_map.get(role)
+    if value is None:
+        return complex(fallback)
+    if isinstance(value, (int, float, complex)):
+        return complex(value)
+    material = canonical_material_name(str(value))
+    if material == "Air":
+        return 1.0 + 0.0j
+    return complex(
+        np.asarray(
+            material_complex_index(
+                material,
+                float(wavelength_nm),
+                allow_extrapolate=allow_extrapolate,
+            )
+        )
+    )
+
+
+def _layer_role_for_material_map(layer_name: str, design_type: str) -> str | None:
+    name = str(layer_name).upper()
+    key = str(design_type).strip().lower()
+    if name.startswith("ME") or name.startswith("RG"):
+        return None
+    if "POROUS" in name:
+        return "n_porous"
+    if name == "M":
+        return "n_mid"
+    if "L" in name:
+        return "n_low"
+    if "H" in name:
+        if key in {
+            "high_reflector",
+            "high_reflection",
+            "quarter_wave_stack",
+            "bragg_reflector",
+            "fp_single_halfwave",
+            "fp_shw",
+            "fp_filter",
+            "narrowband_filter",
+            "fp_double_halfwave",
+            "fp_dhw",
+            "neutral_beamsplitter",
+            "beamsplitter",
+        }:
+            return "n_high_2"
+        return "n_high"
+    return None
+
+
+def multilayer_rt_spectrum_real_materials(
+    wavelengths_nm: Sequence[float],
+    layers: Sequence[LayerSpec],
+    *,
+    design_type: str,
+    material_map: Dict[str, Any],
+    role_fallback_indices: Dict[str, complex],
+    theta0_deg: float = 0.0,
+    pol: str = "p",
+    allow_extrapolate: bool = False,
+) -> Dict[str, np.ndarray]:
+    """Characteristic-matrix spectrum with wavelength-dependent material n/k."""
+    wavelengths_nm = np.asarray(wavelengths_nm, dtype=float).ravel()
+    r_vals: List[complex] = []
+    t_vals: List[complex] = []
+    r_power: List[float] = []
+    t_power: List[float] = []
+    a_power: List[float] = []
+
+    for lam_nm in wavelengths_nm:
+        n0 = _material_or_constant_index(
+            "n_incident",
+            float(lam_nm),
+            material_map,
+            role_fallback_indices["n_incident"],
+            allow_extrapolate=allow_extrapolate,
+        )
+        ns = _material_or_constant_index(
+            "n_substrate",
+            float(lam_nm),
+            material_map,
+            role_fallback_indices["n_substrate"],
+            allow_extrapolate=allow_extrapolate,
+        )
+        dispersive_layers: List[LayerSpec] = []
+        for layer in layers:
+            role = _layer_role_for_material_map(layer.name, design_type)
+            if role is None:
+                n_layer = complex(layer.n)
+            else:
+                n_layer = _material_or_constant_index(
+                    role,
+                    float(lam_nm),
+                    material_map,
+                    role_fallback_indices.get(role, complex(layer.n)),
+                    allow_extrapolate=allow_extrapolate,
+                )
+            dispersive_layers.append(LayerSpec(layer.name, n_layer, layer.thickness_nm))
+
+        item = multilayer_rt_spectrum(
+            wavelengths_nm=[float(lam_nm)],
+            layers=dispersive_layers,
+            n_incident=n0,
+            n_substrate=ns,
+            theta0_deg=theta0_deg,
+            pol=pol,
+        )
+        r_vals.append(complex(item["r_complex"][0]))
+        t_vals.append(complex(item["t_complex"][0]))
+        r_power.append(float(item["R"][0]))
+        t_power.append(float(item["T"][0]))
+        a_power.append(float(item["A"][0]))
+
+    return {
+        "wavelength_nm": wavelengths_nm.astype(float),
+        "r_complex": np.asarray(r_vals, dtype=complex),
+        "t_complex": np.asarray(t_vals, dtype=complex),
+        "R": np.asarray(r_power, dtype=float),
+        "T": np.asarray(t_power, dtype=float),
+        "A": np.asarray(a_power, dtype=float),
+    }
+
+
 def build_single_ar_layers(lambda0_nm: float, n_low: complex) -> List[LayerSpec]:
     return [
         LayerSpec("L", n_low, quarter_wave_thickness_nm(lambda0_nm, n_low)),
@@ -1901,6 +2037,169 @@ def simulate_report_design(
             "T_max": float(np.max(spectrum["T"])),
             "T_max_wavelength_nm": float(spectrum["wavelength_nm"][peak_t_idx]),
         },
+    }
+    return result
+
+
+def _default_real_material_map_for_design(design_type: str) -> Dict[str, str]:
+    key = str(design_type).strip().lower()
+    material_map: Dict[str, str] = {
+        "n_incident": "Air",
+        "n_substrate": "SiO2",
+        "n_low": "SiO2",
+        "n_mid": "Al2O3",
+        "n_high": "TiO2",
+        "n_high_2": "TiO2",
+    }
+    if key in {"quarter_wave_single_layer", "qw_single_layer", "half_wave_single_layer", "hw_single_layer", "single_ar", "single_antireflection"}:
+        material_map["n_low"] = "MgF2"
+    return material_map
+
+
+def _used_real_material_names(material_map: Dict[str, Any]) -> List[str]:
+    names: List[str] = []
+    for value in material_map.values():
+        if isinstance(value, str):
+            material = canonical_material_name(value)
+            if material != "Air":
+                names.append(material)
+    return names
+
+
+def _reconstruct_layers(layer_rows: Sequence[Dict[str, Any]]) -> List[LayerSpec]:
+    layers: List[LayerSpec] = []
+    for row in layer_rows:
+        n_value = complex(float(row.get("n_real", 0.0)), float(row.get("n_imag", 0.0)))
+        layers.append(LayerSpec(str(row["name"]), n_value, float(row["thickness_nm"])))
+    return layers
+
+
+def _summary_from_spectrum(spectrum: Dict[str, np.ndarray], lambda0_nm: float) -> Dict[str, float]:
+    peak_r_idx = int(np.argmax(spectrum["R"]))
+    valley_r_idx = int(np.argmin(spectrum["R"]))
+    peak_t_idx = int(np.argmax(spectrum["T"]))
+    return {
+        "R_at_lambda0": float(np.interp(float(lambda0_nm), spectrum["wavelength_nm"], spectrum["R"])),
+        "T_at_lambda0": float(np.interp(float(lambda0_nm), spectrum["wavelength_nm"], spectrum["T"])),
+        "A_at_lambda0": float(np.interp(float(lambda0_nm), spectrum["wavelength_nm"], spectrum["A"])),
+        "R_min": float(np.min(spectrum["R"])),
+        "R_min_wavelength_nm": float(spectrum["wavelength_nm"][valley_r_idx]),
+        "R_max": float(np.max(spectrum["R"])),
+        "R_max_wavelength_nm": float(spectrum["wavelength_nm"][peak_r_idx]),
+        "T_max": float(np.max(spectrum["T"])),
+        "T_max_wavelength_nm": float(spectrum["wavelength_nm"][peak_t_idx]),
+    }
+
+
+def simulate_report_design_real_materials(
+    design_type: str,
+    *,
+    material_map: Dict[str, Any] | None = None,
+    wavelengths_nm: Sequence[float] | None = None,
+    allow_extrapolate: bool = False,
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    """Run a teaching TMM case with wavelength-dependent real n/k data.
+
+    Layer thicknesses are designed at ``lambda0_nm`` using the real material
+    index at the design wavelength.  The spectrum is then evaluated with
+    interpolated ``n(lambda), k(lambda)`` values for every wavelength point.
+    """
+    key = str(design_type).strip().lower()
+    lambda0_nm = float(kwargs.get("lambda0_nm", 550.0))
+    merged_material_map: Dict[str, Any] = _default_real_material_map_for_design(key)
+    if material_map:
+        merged_material_map.update(material_map)
+
+    if wavelengths_nm is None:
+        base_grid = np.asarray(_default_wavelength_grid_for_design(key, lambda0_nm), dtype=float)
+        materials = _used_real_material_names(merged_material_map)
+        if materials:
+            lower_um, upper_um = common_wavelength_window_um(materials)
+            mask = (base_grid >= lower_um * 1000.0) & (base_grid <= upper_um * 1000.0)
+            wavelengths_nm = base_grid[mask]
+            if len(wavelengths_nm) < 5:
+                wavelengths_nm = np.linspace(max(lower_um * 1000.0, 400.0), min(upper_um * 1000.0, 750.0), 251)
+        else:
+            wavelengths_nm = base_grid
+    wavelengths_nm = np.asarray(wavelengths_nm, dtype=float)
+
+    role_defaults: Dict[str, complex] = {
+        "n_incident": _to_complex_index(float(kwargs.get("n_incident", 1.0)), float(kwargs.get("k_incident", 0.0))),
+        "n_substrate": _to_complex_index(float(kwargs.get("n_substrate", 1.52)), float(kwargs.get("k_substrate", 0.0))),
+        "n_low": _to_complex_index(float(kwargs.get("n_low", 1.38)), float(kwargs.get("k_low", 0.0))),
+        "n_porous": _to_complex_index(float(kwargs.get("n_porous", 1.18)), 0.0),
+        "n_mid": _to_complex_index(float(kwargs.get("n_mid", 1.60)), float(kwargs.get("k_mid", 0.0))),
+        "n_high": _to_complex_index(float(kwargs.get("n_high", 2.00)), float(kwargs.get("k_high", 0.0))),
+        "n_high_2": _to_complex_index(float(kwargs.get("n_high_2", 2.15)), float(kwargs.get("k_high_2", 0.0))),
+    }
+
+    design_role_indices = {
+        role: _material_or_constant_index(
+            role,
+            lambda0_nm,
+            merged_material_map,
+            fallback,
+            allow_extrapolate=allow_extrapolate,
+        )
+        for role, fallback in role_defaults.items()
+    }
+
+    design_kwargs = dict(kwargs)
+    for role, index in design_role_indices.items():
+        if role == "n_incident":
+            design_kwargs["n_incident"] = float(np.real(index))
+            design_kwargs["k_incident"] = float(np.imag(index))
+        elif role == "n_substrate":
+            design_kwargs["n_substrate"] = float(np.real(index))
+            design_kwargs["k_substrate"] = float(np.imag(index))
+        elif role == "n_low":
+            design_kwargs["n_low"] = float(np.real(index))
+            design_kwargs["k_low"] = float(np.imag(index))
+        elif role == "n_mid":
+            design_kwargs["n_mid"] = float(np.real(index))
+            design_kwargs["k_mid"] = float(np.imag(index))
+        elif role == "n_high":
+            design_kwargs["n_high"] = float(np.real(index))
+            design_kwargs["k_high"] = float(np.imag(index))
+        elif role == "n_high_2":
+            design_kwargs["n_high_2"] = float(np.real(index))
+            design_kwargs["k_high_2"] = float(np.imag(index))
+        elif role == "n_porous":
+            design_kwargs["n_porous"] = float(np.real(index))
+
+    constant_design = simulate_report_design(
+        design_type=key,
+        wavelengths_nm=wavelengths_nm,
+        **design_kwargs,
+    )
+    fixed_layers = _reconstruct_layers(constant_design["layers"])
+    spectrum = multilayer_rt_spectrum_real_materials(
+        wavelengths_nm=wavelengths_nm,
+        layers=fixed_layers,
+        design_type=key,
+        material_map=merged_material_map,
+        role_fallback_indices=design_role_indices,
+        theta0_deg=float(design_kwargs.get("theta_deg", 0.0)),
+        pol=str(design_kwargs.get("pol", "p")),
+        allow_extrapolate=allow_extrapolate,
+    )
+
+    result = dict(constant_design)
+    result.update(spectrum)
+    result["summary"] = _summary_from_spectrum(spectrum, lambda0_nm)
+    result["layers"] = describe_layers(fixed_layers)
+    result["material_model"] = "real_nk"
+    result["material_map"] = {
+        key_: str(value) if isinstance(value, str) else value
+        for key_, value in merged_material_map.items()
+    }
+    result["design_indices_at_lambda0"] = {
+        role: {
+            "n": float(np.real(index)),
+            "k": float(np.imag(index)),
+        }
+        for role, index in design_role_indices.items()
     }
     return result
 

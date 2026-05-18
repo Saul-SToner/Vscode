@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from .paths import output_file
+from .plotting import AMBER, BLUE, CYAN, GREEN, INK, MUTED, RED, annotate_point, style_axis, style_colorbar
 
 
 _NUMBER_RE = re.compile(r"^[\s]*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][+-]?\d+)?)")
@@ -491,23 +492,23 @@ def _make_ir_summary_plot(path: Path, rows: Sequence[dict[str, Any]], parameter_
     if not rows:
         return
     xs = [float(row[parameter_label]) for row in rows]
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(xs, [float(row["epsilon_8_13_avg"]) for row in rows], "-o", ms=3, label="avg A, 8-13 um")
-    ax.plot(xs, [float(row["A_min_8_13"]) for row in rows], "--", lw=1.2, label="min A, 8-13 um")
+    fig, ax = plt.subplots(figsize=(8.4, 5.2))
+    style_axis(ax)
+    ax.plot(xs, [float(row["epsilon_8_13_avg"]) for row in rows], "-o", color=GREEN, lw=2.2, ms=4, label="avg A, 8-13 um")
+    ax.plot(xs, [float(row["A_min_8_13"]) for row in rows], "--", color=MUTED, lw=1.4, label="min A, 8-13 um")
     if "A_at_8p9um" in rows[0]:
-        ax.plot(xs, [float(row["A_at_8p9um"]) for row in rows], "-s", ms=3, label="A at 8.9 um")
+        ax.plot(xs, [float(row["A_at_8p9um"]) for row in rows], "-s", color=BLUE, ms=3.5, label="A at 8.9 um")
     if "A_at_10um" in rows[0]:
-        ax.plot(xs, [float(row["A_at_10um"]) for row in rows], "-^", ms=3, label="A at 10 um")
+        ax.plot(xs, [float(row["A_at_10um"]) for row in rows], "-^", color=AMBER, ms=3.5, label="A at 10 um")
     if "A_at_12um" in rows[0]:
-        ax.plot(xs, [float(row["A_at_12um"]) for row in rows], "-d", ms=3, label="A at 12 um")
+        ax.plot(xs, [float(row["A_at_12um"]) for row in rows], "-d", color=CYAN, ms=3.5, label="A at 12 um")
     best = max(rows, key=lambda row: float(row["epsilon_8_13_avg"]))
-    ax.axhline(0.70, color="gray", lw=1, alpha=0.7, label="0.70 target")
-    ax.axvline(float(best[parameter_label]), color="crimson", lw=1, alpha=0.8, label=f"best {float(best[parameter_label]):.0f} nm")
+    ax.axhline(0.70, color=MUTED, lw=1.1, alpha=0.7, linestyle=":", label="0.70 target")
+    ax.axvline(float(best[parameter_label]), color=RED, lw=1.2, alpha=0.85, linestyle="--", label=f"best {float(best[parameter_label]):.0f} nm")
     ax.set_xlabel(parameter_label)
     ax.set_ylabel("Absorptance / emissivity")
     ax.set_title("PDRC IR window scan")
-    ax.grid(True, alpha=0.25)
-    ax.legend()
+    ax.legend(loc="best")
     fig.tight_layout()
     fig.savefig(path, dpi=160, bbox_inches="tight")
     plt.close(fig)
@@ -517,21 +518,21 @@ def _make_final_metrics_plot(path: Path, rows: Sequence[dict[str, Any]], paramet
     if not rows:
         return
     xs = [float(row[parameter_label]) for row in rows]
-    fig, ax = plt.subplots(figsize=(7, 5))
-    ax.plot(xs, [float(row["A_solar_avg"]) for row in rows], "-o", label="A_solar_avg")
+    fig, ax = plt.subplots(figsize=(8.2, 5.2))
+    style_axis(ax)
+    ax.plot(xs, [float(row["A_solar_avg"]) for row in rows], "-o", color=AMBER, lw=2.0, label="A_solar_avg")
     if "A_solar_weighted" in rows[0]:
-        ax.plot(xs, [float(row["A_solar_weighted"]) for row in rows], "--o", label="A_solar_weighted")
-    ax.plot(xs, [float(row["epsilon_8_13_avg"]) for row in rows], "-s", label="epsilon_8_13_avg")
-    ax.plot(xs, [float(row["cooling_score"]) for row in rows], "-^", label="score")
+        ax.plot(xs, [float(row["A_solar_weighted"]) for row in rows], "--o", color=RED, lw=2.0, label="A_solar_weighted")
+    ax.plot(xs, [float(row["epsilon_8_13_avg"]) for row in rows], "-s", color=GREEN, lw=2.1, label="epsilon_8_13_avg")
+    ax.plot(xs, [float(row["cooling_score"]) for row in rows], "-^", color=BLUE, lw=1.8, label="score")
     if "cooling_score_weighted" in rows[0]:
-        ax.plot(xs, [float(row["cooling_score_weighted"]) for row in rows], "--^", label="score_weighted")
-    ax.axhline(0.15, color="gray", lw=1, alpha=0.5)
-    ax.axhline(0.70, color="gray", lw=1, alpha=0.5)
+        ax.plot(xs, [float(row["cooling_score_weighted"]) for row in rows], "--^", color=CYAN, lw=1.9, label="score_weighted")
+    ax.axhline(0.15, color=RED, lw=1, alpha=0.45, linestyle=":")
+    ax.axhline(0.70, color=GREEN, lw=1, alpha=0.45, linestyle=":")
     ax.set_xlabel(parameter_label)
     ax.set_ylabel("Metric")
     ax.set_title("PDRC candidate metrics")
-    ax.grid(True, alpha=0.25)
-    ax.legend()
+    ax.legend(loc="best")
     fig.tight_layout()
     fig.savefig(path, dpi=160, bbox_inches="tight")
     plt.close(fig)
@@ -551,17 +552,137 @@ def _make_two_parameter_scatter_plot(
     xs = [float(row[x_label]) for row in rows]
     ys = [float(row[y_label]) for row in rows]
     colors = [float(row[metric]) for row in rows]
-    fig, ax = plt.subplots(figsize=(7, 5.5))
-    scatter = ax.scatter(xs, ys, c=colors, s=70, cmap="viridis", edgecolors="black", linewidths=0.3)
+    fig, ax = plt.subplots(figsize=(7.8, 6.0))
+    style_axis(ax)
+    scatter = ax.scatter(xs, ys, c=colors, s=110, cmap="viridis", edgecolors="white", linewidths=0.9)
     best = max(rows, key=lambda row: float(row[metric]))
-    ax.scatter([float(best[x_label])], [float(best[y_label])], marker="*", s=180, c="crimson", edgecolors="white", linewidths=0.8)
+    ax.scatter([float(best[x_label])], [float(best[y_label])], marker="*", s=240, c=RED, edgecolors="white", linewidths=1.0)
+    annotate_point(
+        ax,
+        float(best[x_label]),
+        float(best[y_label]),
+        f"best\n{metric}={float(best[metric]):.3f}",
+    )
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
     ax.set_title(title)
-    ax.grid(True, alpha=0.25)
-    fig.colorbar(scatter, ax=ax, label=metric)
+    cbar = fig.colorbar(scatter, ax=ax, label=metric)
+    style_colorbar(cbar)
     fig.tight_layout()
     fig.savefig(path, dpi=160, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _grid_from_rows(
+    rows: Sequence[dict[str, Any]],
+    parameter_labels: Sequence[str],
+    metric: str,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    x_label, y_label = parameter_labels[0], parameter_labels[1]
+    xs = np.asarray(sorted({float(row[x_label]) for row in rows}), dtype=float)
+    ys = np.asarray(sorted({float(row[y_label]) for row in rows}), dtype=float)
+    grid = np.full((len(ys), len(xs)), np.nan, dtype=float)
+    for row in rows:
+        x_idx = int(np.where(xs == float(row[x_label]))[0][0])
+        y_idx = int(np.where(ys == float(row[y_label]))[0][0])
+        grid[y_idx, x_idx] = float(row[metric])
+    return xs, ys, grid
+
+
+def _make_two_parameter_heatmap_plot(
+    path: Path,
+    rows: Sequence[dict[str, Any]],
+    parameter_labels: Sequence[str],
+    *,
+    metric: str,
+    title: str,
+    cmap: str = "viridis",
+) -> None:
+    if len(parameter_labels) < 2 or not rows:
+        return
+    x_label, y_label = parameter_labels[0], parameter_labels[1]
+    xs, ys, grid = _grid_from_rows(rows, parameter_labels, metric)
+    fig, ax = plt.subplots(figsize=(8.2, 6.0))
+    style_axis(ax, grid=False)
+    image = ax.imshow(
+        grid,
+        origin="lower",
+        aspect="auto",
+        cmap=cmap,
+        extent=[xs.min(), xs.max(), ys.min(), ys.max()],
+        interpolation="nearest",
+    )
+    ax.scatter(
+        [float(row[x_label]) for row in rows],
+        [float(row[y_label]) for row in rows],
+        s=55,
+        facecolors="none",
+        edgecolors="white",
+        linewidths=0.9,
+    )
+    for row in rows:
+        ax.text(float(row[x_label]), float(row[y_label]), f"{float(row[metric]):.3f}", ha="center", va="center", fontsize=7.5, color="white")
+    best = max(rows, key=lambda row: float(row[metric]))
+    ax.scatter([float(best[x_label])], [float(best[y_label])], marker="*", s=260, c=RED, edgecolors="white", linewidths=1.0)
+    annotate_point(ax, float(best[x_label]), float(best[y_label]), f"best\n{float(best[metric]):.3f}")
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    ax.set_title(title)
+    cbar = fig.colorbar(image, ax=ax, label=metric)
+    style_colorbar(cbar)
+    fig.tight_layout()
+    fig.savefig(path, dpi=190, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _make_final_dashboard_plot(path: Path, rows: Sequence[dict[str, Any]], parameter_labels: Sequence[str]) -> None:
+    if len(parameter_labels) < 2 or not rows:
+        return
+    x_label, y_label = parameter_labels[0], parameter_labels[1]
+    fig, axes = plt.subplots(2, 2, figsize=(13.0, 9.2), constrained_layout=True)
+    metric_specs = [
+        ("cooling_score_weighted", "综合得分 weighted score", "viridis"),
+        ("epsilon_8_13_avg", "8-13 μm 平均发射率", "YlGn"),
+        ("A_solar_weighted", "太阳加权吸收率", "YlOrRd_r"),
+    ]
+    for ax, (metric, title, cmap) in zip(axes.flat[:3], metric_specs):
+        style_axis(ax, grid=False)
+        xs, ys, grid = _grid_from_rows(rows, parameter_labels, metric)
+        image = ax.imshow(
+            grid,
+            origin="lower",
+            aspect="auto",
+            cmap=cmap,
+            extent=[xs.min(), xs.max(), ys.min(), ys.max()],
+            interpolation="nearest",
+        )
+        for row in rows:
+            ax.scatter(float(row[x_label]), float(row[y_label]), s=50, facecolors="none", edgecolors="white", linewidths=0.8)
+            ax.text(float(row[x_label]), float(row[y_label]), f"{float(row[metric]):.3f}", ha="center", va="center", fontsize=7.3, color="white")
+        best = min(rows, key=lambda row: float(row[metric])) if metric == "A_solar_weighted" else max(rows, key=lambda row: float(row[metric]))
+        ax.scatter([float(best[x_label])], [float(best[y_label])], marker="*", s=230, c=RED, edgecolors="white", linewidths=1.0)
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(y_label)
+        ax.set_title(title)
+        cbar = fig.colorbar(image, ax=ax, label=metric)
+        style_colorbar(cbar)
+
+    ax_rank = axes.flat[3]
+    style_axis(ax_rank)
+    ranked = sorted(rows, key=lambda row: float(row["cooling_score_weighted"]), reverse=True)
+    labels = [f"{float(row[x_label]):.0f}/{float(row[y_label]):.0f}" for row in ranked]
+    values = [float(row["cooling_score_weighted"]) for row in ranked]
+    colors = [GREEN if idx == 0 else BLUE for idx in range(len(ranked))]
+    ax_rank.bar(range(len(values)), values, color=colors, alpha=0.9)
+    ax_rank.set_xticks(range(len(labels)))
+    ax_rank.set_xticklabels(labels, rotation=35, ha="right")
+    ax_rank.set_ylim(max(0.0, min(values) - 0.02), min(1.0, max(values) + 0.02))
+    ax_rank.set_ylabel("cooling_score_weighted")
+    ax_rank.set_title("候选排序")
+    for idx, val in enumerate(values):
+        ax_rank.text(idx, val + 0.002, f"{val:.3f}", ha="center", va="bottom", fontsize=8, color=INK)
+    fig.suptitle("PDRC 候选结构指标地图", fontsize=15, fontweight="semibold", color=INK)
+    fig.savefig(path, dpi=190, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -679,13 +800,23 @@ def export_pdrc_comsol_candidate_bundle(
     if len(parameter_labels) == 1:
         _make_ir_summary_plot(ir_plot, ir_plot_rows, primary_parameter_label)
     else:
-        _make_two_parameter_scatter_plot(
+        _make_two_parameter_heatmap_plot(
             ir_plot,
             ir_plot_rows,
             parameter_labels,
             metric="epsilon_8_13_avg",
             title="PDRC IR window scan",
+            cmap="YlGn",
         )
+        ir_scatter_plot = output_file(f"{prefix}_ir_summary_scatter.png")
+        _make_two_parameter_scatter_plot(
+            ir_scatter_plot,
+            ir_plot_rows,
+            parameter_labels,
+            metric="epsilon_8_13_avg",
+            title="PDRC IR window scan, measured points",
+        )
+        saved["ir_summary_scatter_png"] = str(ir_scatter_plot)
     saved["ir_summary_png"] = str(ir_plot)
 
     if final_rows:
@@ -693,13 +824,26 @@ def export_pdrc_comsol_candidate_bundle(
         if len(parameter_labels) == 1:
             _make_final_metrics_plot(metrics_plot, final_rows, primary_parameter_label)
         else:
-            _make_two_parameter_scatter_plot(
+            _make_two_parameter_heatmap_plot(
                 metrics_plot,
                 final_rows,
                 parameter_labels,
                 metric="cooling_score_weighted",
                 title="PDRC weighted cooling score",
+                cmap="viridis",
             )
+            metrics_scatter_plot = output_file(f"{prefix}_final_metrics_scatter.png")
+            _make_two_parameter_scatter_plot(
+                metrics_scatter_plot,
+                final_rows,
+                parameter_labels,
+                metric="cooling_score_weighted",
+                title="PDRC weighted cooling score, measured points",
+            )
+            saved["final_metrics_scatter_png"] = str(metrics_scatter_plot)
+            dashboard_plot = output_file(f"{prefix}_final_dashboard.png")
+            _make_final_dashboard_plot(dashboard_plot, final_rows, parameter_labels)
+            saved["final_dashboard_png"] = str(dashboard_plot)
         saved["final_metrics_png"] = str(metrics_plot)
 
     manifest_path = output_file(f"{prefix}_manifest.json")

@@ -16,6 +16,7 @@ pip install -r requirements.txt
 python smoke_test.py
 python run_teaching_demo.py --case single_ar
 python run_guided_grating_demo.py
+python run_material_library_demo.py
 ```
 
 默认输出目录为 `~/thinfilm_outputs`，也可以通过环境变量 `THINFILM_OUTPUT_DIR` 指定。
@@ -71,7 +72,7 @@ data/comsol/         COMSOL 导出数据的专题说明
 data/theory/         Python TMM 生成理论谱线说明
 ```
 
-推荐对外表述为：理论数据用于验证算法，COMSOL 数据用于验证复杂结构，公开真实数据用于引入真实材料色散和真实测量谱线。
+推荐对外表述为：理论数据用于验证算法，COMSOL 数据用于验证复杂结构，公开真实数据用于引入真实材料色散和真实测量谱线。真实材料库已通过 `thinfilm/materials.py` 统一接入，可用于读取、插值、导出材料目录，并在教学 TMM 中切换为真实色散计算。
 
 ## 2.1 模块路线图
 
@@ -84,21 +85,24 @@ flowchart LR
     B --> F["PDRC 被动日间辐射冷却"]
     B --> G["Tamm 界面态与热辐射调控"]
     B --> H["光栅波导支线"]
+    B --> K["真实材料库"]
     C --> I["thinfilm/ 传输矩阵、导出、验证"]
     D --> I
     E --> I
     F --> I
     G --> I
+    K --> I
     H --> J["guided_grating/ COMSOL 数据管线"]
 ```
 
-PDRC 第一版当前已形成两个可展示候选：`d_TiO2 = 340 nm` 的平衡版和 `d_TiO2 = 440 nm` 的高性能版。两者都满足太阳波段平均低吸收与 `8-13 um` 红外窗口高发射的第一版标准。
+PDRC 当前已完成真实材料宽波段验证：`d_SiO2_1 = 200 nm`、`d_SiO2_2 = 500 nm`、`d_TiO2_1 = d_TiO2_2 = 440 nm`、`d_SiO2_3 = 1000 nm`、`Ag = 500 nm`。该结构在最新 COMSOL 真实材料导出中得到 `A_solar_weighted(ASTM G173) = 0.0435`、`R_solar_weighted(ASTM G173) = 0.9565`、`epsilon_8_13_avg = 0.8044`、`cooling_score_weighted(ASTM G173) = 0.7609`，满足太阳波段低吸收与 `8-13 um` 红外窗口高发射的第一版标准。
 
 `thinfilm/` 当前重点模块：
 
 ```text
 thinfilm/api.py
 thinfilm/education.py
+thinfilm/materials.py
 thinfilm/io.py
 thinfilm/validation.py
 thinfilm/paths.py
@@ -116,7 +120,27 @@ guided_grating/examples.py
 
 ## 3. 教学仿真主树
 
-### 3.0 最小体检
+### 3.0 真实材料库
+
+真实材料光学常数统一放在 `data/real_nk/`，代码入口为：
+
+```python
+from thinfilm import (
+    list_real_materials,
+    material_nk_at,
+    simulate_teaching_design_real_materials,
+)
+```
+
+命令行演示：
+
+```bash
+python run_material_library_demo.py
+```
+
+该命令会导出材料覆盖范围、常用波长 `n/k` 采样表，以及 `single_ar`、`bragg_reflector`、`fp_filter` 的常数折射率 TMM 与真实色散 TMM 对照。注意：真实材料只能在数据源覆盖范围内使用，当前 Johnson-Christy Au/Ag 不覆盖中红外，不能直接外推到 `8-13 um` PDRC 或 `4-5 um` Tamm。
+
+### 3.1 最小体检
 
 合并代码或准备展示前，建议先运行：
 
@@ -128,7 +152,7 @@ python smoke_test.py
 
 仓库还提供 GitHub Actions 工作流 `.github/workflows/smoke.yml`，用于在 push 和 pull request 时自动运行同一套最小体检。
 
-### 3.1 目标
+### 3.2 目标
 
 教学主树用于复现设计报告中的平面多层膜正向仿真，当前覆盖：
 
@@ -516,6 +540,7 @@ result = export_advanced_ar_topic_bundle(
 当前已开启模块：
 
 1. 拓扑 Tamm 边界态与热辐射空间调控
+2. PDRC 被动日间辐射冷却薄膜光谱调控
 
 该模块当前按三层推进：
 
@@ -528,7 +553,7 @@ result = export_advanced_ar_topic_bundle(
 - 第 1 层普通 Tamm 吸收器已完成一轮主参数摸底，当前最佳点已推进到 `d_W = 120 nm`
 - 已确认 `d_W` 是关键参数，且在 `10~120 nm` 范围内吸收持续增强并接近完美吸收
 - 第 2 层反射相位与拓扑分类已启动，并已具备第一版相位分析总包
-- 第 3 层边界态与空间调控仍保留为后续阶段
+- 第 3 层边界态与空间调控已建立 cutline 量化判据，但当前候选筛选结果为负
 
 当前还支持一个第 2 阶段的最小相位分析入口，可直接对包含 `atan2(imag(S11), real(S11))` 列的 `d_W` 联合扫描 CSV 进行处理：
 
@@ -536,6 +561,62 @@ result = export_advanced_ar_topic_bundle(
 python run_tamm_phase_bundle.py \
   --csv "path/to/tamm_spectrum_dW_scan.csv" \
   --prefix tamm_dw_phase_v1
+```
+
+Tamm 当前收敛结论：
+
+```text
+已建立界面态候选 cutline 判据：
+interface/background
+peak/background
+hotspot_peak_x
+FWHM
+
+119/120 nm @ 4.55 μm 三条 y 位置验证：
+interface/background ≈ 0.965
+peak/background ≈ 1.073
+FWHM ≈ 11.6 μm
+
+100~130 nm 左右厚度 49 组筛选：
+未发现满足 interface/background > 1.5、|peak_x| < 0.5 μm、FWHM < 5 μm 的正候选。
+
+130/130 nm @ 4.45~4.75 μm 波长扫描：
+仍未出现强界面局域态证据。
+```
+
+因此 Tamm 当前不作为“已发现界面态”的正结果，而作为**前沿探索与判据建立模块**。后续若继续追正结果，应先做 1D 反射相位扫描，寻找同一波长下 `R` 较高且 `arg(S11)` 相差接近 `π` 的两种端结构，再进入 2D 拼接验证。
+
+PDRC 模块当前已从“第一版候选”推进到“真实材料宽波段验证完成”。推荐汇报结构为：
+
+```text
+Air / SiO2_1 / TiO2_1 / SiO2_2 / TiO2_2 / SiO2_3 / Ag / substrate
+
+d_SiO2_1 = 200 nm
+d_TiO2_1 = 440 nm
+d_SiO2_2 = 500 nm
+d_TiO2_2 = 440 nm
+d_SiO2_3 = 1000 nm
+d_Ag = 500 nm
+```
+
+关键指标：
+
+```text
+A_solar_avg = 0.0466
+A_solar_weighted(ASTM G173) = 0.0435
+R_solar_weighted(ASTM G173) = 0.9565
+epsilon_8_13_avg = 0.8044
+cooling_score_weighted(ASTM G173) = 0.7609
+```
+
+该结果来自 COMSOL 真实材料宽波段扫描与 Python 指标筛选。太阳波段使用 `pdrc_real_materials_solar_valid.csv`，红外窗口使用 `pdrc_real_materials_ir_valid.csv`；当前标准太阳加权采用 ASTM G173-03 AM1.5 global tilt 光谱，`blackbody_5778K` 仅作为无外部光谱文件时的快速近似。短波端存在局部吸收峰，但按标准太阳光谱加权后平均太阳吸收仍保持在低水平。
+
+当前前沿模块成果口径：
+
+```text
+PDRC：正结果模块。已完成结构优化、真实材料 COMSOL 宽波段扫描、ASTM G173 标准太阳加权与 Python 指标筛选。
+
+Tamm：前沿探索模块。已完成界面态候选判据建立与多组候选排除，后续方向转为 1D 反射相位端结构筛选。
 ```
 
 导出前沿模型树：
@@ -548,6 +629,14 @@ python run_frontier_model_tree.py
 
 ```bash
 python run_frontier_model_tree.py --bundle
+```
+
+导出结果包含：
+
+```text
+frontier_research_model_tree.json
+frontier_research_model_tree.txt
+frontier_research_model_tree.png
 ```
 
 Python 入口：

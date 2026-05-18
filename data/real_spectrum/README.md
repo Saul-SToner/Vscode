@@ -25,7 +25,13 @@ PDRC 模块当前支持两种太阳波段平均方式：
 - 普通算术平均：`A_solar_avg`
 - 太阳光谱加权平均：`A_solar_weighted`
 
-默认加权模式为 `blackbody_5778K`，用于第一版快速判断短波紫外吸收峰是否显著影响太阳平均吸收。若后续下载 ASTM G173 / AM1.5 标准太阳光谱，可整理为：
+默认加权模式为 `blackbody_5778K`，用于第一版快速判断短波紫外吸收峰是否显著影响太阳平均吸收。当前 PDRC 正式结果已接入 ASTM G173-03 AM1.5 global tilt 标准太阳光谱，文件位于：
+
+```text
+data/real_spectrum/astm_g173_am15/astm_g173_am15_global_tilt.csv
+```
+
+外部光谱 CSV 推荐整理为：
 
 ```csv
 lambda_um,irradiance
