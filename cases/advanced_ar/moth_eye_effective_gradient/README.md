@@ -22,7 +22,7 @@
 ## 4. Python 运行方式
 
 ```bash
-python run_advanced_ar_bundle.py
+python run_case.py --group advanced_ar --case bundle
 ```
 
 ## 5. 结果判断

@@ -71,14 +71,14 @@ pdrc_candidates_340_440_final_metrics.csv
 ## 5. Python 运行方式
 
 ```bash
-python run_pdrc_cooling_bundle.py
-python run_pdrc_cooling_bundle.py --comsol-csv "path/to/pdrc_ir.csv"
+python run_case.py --group pdrc --case cooling_bundle
+python run_case.py --group pdrc --case cooling_bundle -- --comsol-csv "path/to/pdrc_ir.csv"
 ```
 
 候选扫描分析：
 
 ```bash
-python run_pdrc_cooling_bundle.py --analyze-comsol-candidates \
+python run_case.py --group pdrc --case cooling_bundle -- --analyze-comsol-candidates \
   --prefix pdrc_candidates \
   --ir-csv "path/to/ir_part1.csv" \
   --ir-csv "path/to/ir_part2.csv" \
@@ -112,7 +112,7 @@ export_pdrc_comsol_candidates(
 多参数联合扫描也可以直接读，例如同时扫描 `d_SiO2_1` 和 `d_SiO2_2`：
 
 ```bash
-python run_pdrc_cooling_bundle.py --analyze-comsol-candidates \
+python run_case.py --group pdrc --case cooling_bundle -- --analyze-comsol-candidates \
   --prefix pdrc_scan_sio2_1_2_final \
   --parameter-selector d_SiO2_1,d_SiO2_2 \
   --parameter-label d_SiO2_1_nm,d_SiO2_2_nm \

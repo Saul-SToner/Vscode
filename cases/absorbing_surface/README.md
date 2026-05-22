@@ -5,8 +5,8 @@
 常用根目录入口：
 
 ```bash
-python run_absorbing_surface_bundle.py --csv "path/to/rough_surface.csv"
-python run_absorbing_surface_gain.py --rough-csv "path/to/rough.csv" --baseline-csv "path/to/baseline.csv"
+python run_case.py --group absorbing_surface --case bundle -- --csv "path/to/rough_surface.csv"
+python run_case.py --group absorbing_surface --case gain -- --rough-csv "path/to/rough.csv" --baseline-csv "path/to/baseline.csv"
 ```
 
 本目录内的具体脚本：

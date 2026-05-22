@@ -22,7 +22,7 @@
 ## 4. Python 运行方式
 
 ```bash
-python run_porous_double_ar_topic_bundle.py
+python run_case.py --group advanced_ar --case porous_double_ar
 ```
 
 ## 5. 结果判断

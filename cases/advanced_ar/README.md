@@ -5,8 +5,8 @@
 常用根目录入口：
 
 ```bash
-python run_advanced_ar_bundle.py --single-ar-csv "path/to/single_ar.csv" --porous-csv "path/to/porous.csv" --moth-eye-effective-csv "path/to/effective.csv" --moth-eye-2d-csv "path/to/2d.csv"
-python run_rugate_80layer_table.py
+python run_case.py --group advanced_ar --case bundle -- --single-ar-csv "path/to/single_ar.csv" --porous-csv "path/to/porous.csv" --moth-eye-effective-csv "path/to/effective.csv" --moth-eye-2d-csv "path/to/2d.csv"
+python run_case.py --group advanced_ar --case rugate_80layer
 ```
 
 本目录内的具体脚本：

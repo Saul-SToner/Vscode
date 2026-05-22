@@ -103,7 +103,7 @@ abs(ewfd.S21)^2
 二维红外扫描：
 
 ```bash
-python run_pdrc_cooling_bundle.py --analyze-comsol-candidates ^
+python run_case.py --group pdrc --case cooling_bundle -- --analyze-comsol-candidates ^
   --prefix pdrc_scan_sio2_1_2_ir ^
   --parameter-selector d_SiO2_1,d_SiO2_2 ^
   --parameter-label d_SiO2_1_nm,d_SiO2_2_nm ^
@@ -113,7 +113,7 @@ python run_pdrc_cooling_bundle.py --analyze-comsol-candidates ^
 如果后续导出了候选点太阳波段：
 
 ```bash
-python run_pdrc_cooling_bundle.py --analyze-comsol-candidates ^
+python run_case.py --group pdrc --case cooling_bundle -- --analyze-comsol-candidates ^
   --prefix pdrc_scan_sio2_1_2_final ^
   --parameter-selector d_SiO2_1,d_SiO2_2 ^
   --parameter-label d_SiO2_1_nm,d_SiO2_2_nm ^

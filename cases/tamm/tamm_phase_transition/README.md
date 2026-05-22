@@ -34,9 +34,9 @@ lambda = range(4.2[um], 0.02[um], 5.0[um])
 ## 5. Python 运行方式
 
 ```bash
-python run_tamm_phase_bundle.py --csv "path/to/tamm_phase_scan.csv"
-python run_tamm_phase_candidates.py --csv "path/to/tamm_phase_scan.csv"
-python run_tamm_reflection_phase_screen.py --csv "path/to/tamm_phase_scan.csv"
+python run_case.py --group tamm --case phase_bundle -- --csv "path/to/tamm_phase_scan.csv"
+python run_case.py --group tamm --case phase_candidates -- --csv "path/to/tamm_phase_scan.csv"
+python run_case.py --group tamm --case reflection_phase_screen -- --csv "path/to/tamm_phase_scan.csv"
 ```
 
 ## 6. 结果判断

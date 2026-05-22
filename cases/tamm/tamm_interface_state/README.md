@@ -51,8 +51,8 @@ sqrt(abs(ewfd.Ex)^2+abs(ewfd.Ey)^2+abs(ewfd.Ez)^2)
 ## 5. Python 运行方式
 
 ```bash
-python run_tamm_interface_window_bundle.py
-python run_tamm_interface_window_scan.py
+python run_case.py --group tamm --case interface_window_bundle
+python run_case.py --group tamm --case interface_window_scan
 ```
 
 ## 6. 结果判断

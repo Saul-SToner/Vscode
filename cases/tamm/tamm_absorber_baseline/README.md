@@ -35,7 +35,7 @@ lambda = 4.2-5.0 um
 ## 5. Python 运行方式
 
 ```bash
-python run_tamm_phase_bundle.py --csv "path/to/tamm_scan.csv"
+python run_case.py --group tamm --case phase_bundle -- --csv "path/to/tamm_scan.csv"
 ```
 
 ## 6. 结果判断

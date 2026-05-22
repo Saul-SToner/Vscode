@@ -2,18 +2,29 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import os
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent
 
 
+def _configure_console() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
 def _run(command: list[str]) -> None:
     label = " ".join(command)
     print(f"[smoke] running: {label}")
+    env = os.environ.copy()
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    env.setdefault("PYTHONUTF8", "1")
     completed = subprocess.run(
         command,
         cwd=ROOT,
+        env=env,
         text=True,
         encoding="utf-8",
         errors="replace",
@@ -28,6 +39,7 @@ def _run(command: list[str]) -> None:
 
 
 def main() -> None:
+    _configure_console()
     print(f"[smoke] python: {sys.executable}")
     print(f"[smoke] version: {sys.version}")
     print("[smoke] checking package imports")
@@ -56,6 +68,8 @@ def main() -> None:
         [python, "run_teaching_demo.py", "--catalog"],
         [python, "run_guided_grating_demo.py"],
         [python, "run_material_library_demo.py", "--case", "single_ar"],
+        [python, "run_case.py", "--list"],
+        [python, "run_case.py", "--group", "frontier", "--case", "model_tree", "--", "--show"],
     ]
     for command in commands:
         _run(command)

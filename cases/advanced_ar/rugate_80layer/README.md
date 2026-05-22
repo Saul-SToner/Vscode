@@ -21,7 +21,7 @@
 ## 4. Python 运行方式
 
 ```bash
-python run_rugate_80layer_table.py
+python run_case.py --group advanced_ar --case rugate_80layer
 ```
 
 ## 5. 结果判断

@@ -42,6 +42,7 @@ python run_material_library_demo.py
 ```text
 README.md                    项目总说明
 run_*.py                     根目录稳定入口，只负责转发
+run_case.py                  高级专题统一入口，转发到 cases/*/run_*.py
 cases/                       各专题和具体案例的运行脚本与说明
 thinfilm/                    薄膜光学核心库、教学主树、验证模块
 guided_grating/              光栅波导研究支线库
@@ -54,14 +55,32 @@ smoke_test.py                最小导入与演示命令体检
 推荐从外向内理解仓库：
 
 ```text
-根目录 run_*.py      给老师、组员、评委和 CI 使用的稳定入口
+根目录公开 run_*.py  给老师、组员、评委和 CI 使用的少量稳定入口
+run_case.py          高级专题统一入口
 cases/*/run_*.py    具体专题内部脚本
 cases/*/*/README.md 具体案例说明页
 thinfilm/           底层薄膜光学模型、导出、验证和数据分析函数
 guided_grating/     光栅波导支线函数库
 ```
 
-根目录入口会通过 `_entrypoint_runner.py` 转发到 `cases/` 内部脚本。这样旧命令仍然稳定，同时仓库展示层也能按专题和案例阅读。
+根目录只保留少量公开入口：
+
+```text
+run_teaching_demo.py
+run_material_library_demo.py
+run_teaching_metrics_bundle.py
+run_guided_grating_demo.py
+run_frontier_model_tree.py
+```
+
+其他高级专题通过 `run_case.py` 统一调用，例如：
+
+```bash
+python run_case.py --list
+python run_case.py --group tamm --case phase_bundle -- --csv "path/to/tamm_scan.csv"
+python run_case.py --group pdrc --case cooling_bundle -- --comsol-csv "path/to/pdrc.csv"
+python run_case.py --group advanced_ar --case bundle -- --single-ar-csv "path/to/single_ar.csv"
+```
 
 `data/` 当前按数据来源分为三层：
 
@@ -78,7 +97,7 @@ data/theory/         Python TMM 生成理论谱线说明
 
 ```mermaid
 flowchart LR
-    A["根目录稳定入口 run_*.py"] --> B["cases/ 专题与案例说明"]
+    A["根目录公开入口 + run_case.py"] --> B["cases/ 专题与案例说明"]
     B --> C["教学主树"]
     B --> D["高级减反"]
     B --> E["吸收表面"]
@@ -253,13 +272,13 @@ teaching_main_branch_catalog.json
 导出模板：
 
 ```bash
-python run_teaching_expansion_validation.py --template-out --prefix teaching_expansion_validation_cli
+python run_case.py --group teaching --case expansion_validation -- --template-out --prefix teaching_expansion_validation_cli
 ```
 
 填写模板中的 `reference_csv` 等字段后，可以直接运行：
 
 ```bash
-python run_teaching_expansion_validation.py --template-file "path/to/filled_template.json" --prefix teaching_expansion_validation_run
+python run_case.py --group teaching --case expansion_validation -- --template-file "path/to/filled_template.json" --prefix teaching_expansion_validation_run
 ```
 
 模板支持 `.json` 或 `.csv` 两种格式。
@@ -502,7 +521,7 @@ result = export_final_delivery_bundle(
 命令行入口：
 
 ```bash
-python run_advanced_ar_bundle.py \
+python run_case.py --group advanced_ar --case bundle -- \
   --single-ar-csv "path/to/single_ar.csv" \
   --porous-csv "path/to/porous.csv" \
   --moth-eye-effective-csv "path/to/moth_eye_effective.csv" \
@@ -558,7 +577,7 @@ result = export_advanced_ar_topic_bundle(
 当前还支持一个第 2 阶段的最小相位分析入口，可直接对包含 `atan2(imag(S11), real(S11))` 列的 `d_W` 联合扫描 CSV 进行处理：
 
 ```bash
-python run_tamm_phase_bundle.py \
+python run_case.py --group tamm --case phase_bundle -- \
   --csv "path/to/tamm_spectrum_dW_scan.csv" \
   --prefix tamm_dw_phase_v1
 ```
@@ -566,7 +585,7 @@ python run_tamm_phase_bundle.py \
 进入 2D 拼接之前，推荐先做更严格的 1D 端结构筛选：
 
 ```bash
-python run_tamm_reflection_phase_screen.py \
+python run_case.py --group tamm --case reflection_phase_screen -- \
   --csv "path/to/tamm_spectrum_dW_scan.csv" \
   --lambda-min-um 4.3 \
   --lambda-max-um 4.8 \
@@ -629,6 +648,8 @@ cooling_score_weighted(ASTM G173) = 0.7609
 
 ```text
 PDRC：正结果模块。已完成结构优化、真实材料 COMSOL 宽波段扫描、ASTM G173 标准太阳加权与 Python 指标筛选。
+
+TPP：正结果模块。参考 TPP 结构完成反射型近完美吸收优化，`d_spacer = 320 nm`、`lambda = 3.34 um`、`A = 1 - R = 0.9994`。
 
 Tamm：前沿探索模块。已完成界面态候选判据建立与多组候选排除，后续方向转为 1D 反射相位端结构筛选。
 ```

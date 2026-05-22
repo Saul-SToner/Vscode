@@ -88,7 +88,7 @@ C:\Users\L2791\thinfilm_outputs\pdrc_real_materials_ir_valid_spectrum.png
 ## 复现命令
 
 ```bash
-python run_pdrc_cooling_bundle.py --analyze-comsol-candidates \
+python run_case.py --group pdrc --case cooling_bundle -- --analyze-comsol-candidates \
   --prefix pdrc_scan_sio2_1_2_astm_g173_final \
   --parameter-selector d_SiO2_1,d_SiO2_2 \
   --parameter-label d_SiO2_1_nm,d_SiO2_2_nm \

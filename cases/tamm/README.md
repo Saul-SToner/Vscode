@@ -5,10 +5,10 @@
 常用根目录入口：
 
 ```bash
-python run_tamm_phase_bundle.py --csv "path/to/tamm_phase_scan.csv"
-python run_tamm_reflection_phase_screen.py --csv "path/to/tamm_phase_scan.csv"
-python run_tamm_interface_window_bundle.py
-python run_tamm_interface_window_scan.py
+python run_case.py --group tamm --case phase_bundle -- --csv "path/to/tamm_phase_scan.csv"
+python run_case.py --group tamm --case reflection_phase_screen -- --csv "path/to/tamm_phase_scan.csv"
+python run_case.py --group tamm --case interface_window_bundle
+python run_case.py --group tamm --case interface_window_scan
 ```
 
 本目录内的具体脚本：
@@ -66,7 +66,7 @@ TPP 反射型吸收器当前已形成可展示正结果：
 推荐先运行：
 
 ```bash
-python run_tamm_reflection_phase_screen.py ^
+python run_case.py --group tamm --case reflection_phase_screen ^
   --csv "path/to/tamm_phase_scan.csv" ^
   --lambda-min-um 4.3 ^
   --lambda-max-um 4.8 ^

@@ -24,7 +24,7 @@
 ## 4. Python 运行方式
 
 ```bash
-python run_absorbing_surface_topic_bundle.py
+python run_case.py --group absorbing_surface --case topic_bundle
 ```
 
 ## 5. 结果判断

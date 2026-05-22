@@ -5,14 +5,14 @@
 常用根目录入口：
 
 ```bash
-python run_pdrc_cooling_bundle.py
-python run_pdrc_cooling_bundle.py --comsol-csv "path/to/pdrc_ir_window.csv"
+python run_case.py --group pdrc --case cooling_bundle
+python run_case.py --group pdrc --case cooling_bundle -- --comsol-csv "path/to/pdrc_ir_window.csv"
 ```
 
 分析多段 COMSOL 参数扫描：
 
 ```bash
-python run_pdrc_cooling_bundle.py --analyze-comsol-candidates ^
+python run_case.py --group pdrc --case cooling_bundle -- --analyze-comsol-candidates ^
   --prefix pdrc_candidates ^
   --ir-csv "path/to/pdrc_scan_part1.csv" ^
   --ir-csv "path/to/pdrc_scan_part2.csv" ^

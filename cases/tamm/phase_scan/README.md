@@ -25,8 +25,8 @@
 ## 4. Python 运行方式
 
 ```bash
-python run_tamm_phase_bundle.py
-python run_tamm_phase_candidates.py
+python run_case.py --group tamm --case phase_bundle
+python run_case.py --group tamm --case phase_candidates
 ```
 
 ## 5. 结果判断
