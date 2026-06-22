@@ -7,19 +7,21 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from thinfilm.paths import output_file
+from thinfilm._shared import (
+    MAIN_RED,
+    TARGET_GREEN,
+    TRANS_BLUE,
+    ABS_GOLD,
+    GRID_COLOR,
+    TEXT_DARK,
+    PANEL_BG,
+    apply_font_defaults,
+    style_axis,
+)
+
+apply_font_defaults()
 
 from .spectra import summarize_guided_grating_spectrum
-
-plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Noto Sans CJK SC", "Arial Unicode MS", "DejaVu Sans"]
-plt.rcParams["axes.unicode_minus"] = False
-
-MAIN_RED = "#c94f2d"
-TARGET_GREEN = "#0f766e"
-TRANS_BLUE = "#1d4ed8"
-ABS_GOLD = "#b7791f"
-GRID_COLOR = "#d7dde5"
-TEXT_DARK = "#223046"
-PANEL_BG = "#f7f8fb"
 
 
 def _analysis_lines(summary: Dict[str, Any], target_wavelength_nm: float | None) -> list[str]:
@@ -33,17 +35,6 @@ def _analysis_lines(summary: Dict[str, Any], target_wavelength_nm: float | None)
         lines.append(f"目标波长 = {float(target_wavelength_nm):.3f} nm")
         lines.append(f"偏差 = {delta:+.3f} nm")
     return lines
-
-
-def _style_axis(ax: plt.Axes) -> None:
-    ax.set_facecolor(PANEL_BG)
-    ax.grid(True, alpha=0.35, color=GRID_COLOR, linewidth=0.8)
-    for spine in ax.spines.values():
-        spine.set_color("#c9d2dc")
-    ax.tick_params(colors=TEXT_DARK)
-    ax.xaxis.label.set_color(TEXT_DARK)
-    ax.yaxis.label.set_color(TEXT_DARK)
-    ax.title.set_color(TEXT_DARK)
 
 
 def export_guided_grating_result(
@@ -109,7 +100,7 @@ def export_guided_grating_result(
     if save_plot:
         png_path = output_file(f"{stem}_RTA.png")
         fig, ax = plt.subplots(figsize=(8, 5))
-        _style_axis(ax)
+        style_axis(ax)
         ax.plot(wl, r_vals, label="R", linewidth=2.4, color=MAIN_RED)
         ax.plot(wl, t_vals, label="T", linewidth=2.0, color=TRANS_BLUE)
         ax.plot(wl, a_vals, label="A", linewidth=2.0, color=ABS_GOLD)
@@ -139,7 +130,7 @@ def export_guided_grating_result(
 
         main_png = output_file(f"{stem}_main.png")
         fig2, ax2 = plt.subplots(figsize=(8, 5))
-        _style_axis(ax2)
+        style_axis(ax2)
         ax2.plot(wl, r_vals, linewidth=2.8, color=MAIN_RED)
         ax2.fill_between(wl, r_vals, color=MAIN_RED, alpha=0.10)
         ax2.axvline(summary["peak_wavelength_nm"], linestyle="--", linewidth=1.3, color="#555555", alpha=0.85)
@@ -277,7 +268,7 @@ def export_guided_grating_sweep_summary(
         ax1, ax2, ax3, ax4 = axes.ravel()
 
         for ax in (ax1, ax2, ax3, ax4):
-            _style_axis(ax)
+            style_axis(ax)
             ax.axvline(best_x, linestyle=":", color="#64748b", linewidth=1.2, alpha=0.75)
 
         ax1.plot(x_vals, peak_vals, marker="o", linewidth=2.2, color=MAIN_RED)

@@ -11,6 +11,7 @@ from __future__ import annotations
 import csv
 import json
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
@@ -23,6 +24,20 @@ from .plotting import BLUE, GREEN, INK, MUTED, RED, apply_plot_style, style_axis
 
 REAL_NK_DIR = PROJECT_DIR / "data" / "real_nk"
 REAL_NK_MANIFEST = REAL_NK_DIR / "manifest.json"
+
+_MATERIAL_CACHE: dict[tuple[str, str | None], "MaterialDataset"] = {}
+
+
+def _make_readonly(arr: np.ndarray) -> np.ndarray:
+    """Make a numpy array read-only to prevent accidental mutation."""
+    arr.flags.writeable = False
+    return arr
+
+
+def clear_material_cache() -> None:
+    """Clear all material caches. Useful for testing."""
+    _MATERIAL_CACHE.clear()
+    _load_manifest.cache_clear()
 
 MATERIAL_ALIASES = {
     "silica": "SiO2",
@@ -72,6 +87,7 @@ def canonical_material_name(material: str) -> str:
     return MATERIAL_ALIASES.get(key.lower(), key)
 
 
+@lru_cache(maxsize=1)
 def _load_manifest() -> list[dict[str, Any]]:
     if not REAL_NK_MANIFEST.exists():
         raise FileNotFoundError(f"real material manifest not found: {REAL_NK_MANIFEST}")
@@ -105,16 +121,25 @@ def _find_manifest_entry(material: str, source_contains: str | None = None) -> d
 
 
 def load_real_material(material: str, source_contains: str | None = None) -> MaterialDataset:
-    """Load one material n/k table by material name and optional source filter."""
+    """Load one material n/k table by material name and optional source filter.
+    
+    Results are cached: repeated calls with the same arguments return the
+    same MaterialDataset instance without re-reading from disk.
+    """
+    cache_key = (canonical_material_name(material), source_contains)
+    cached = _MATERIAL_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
     if canonical_material_name(material) == "Air":
-        lambda_um = np.asarray([0.1, 100.0], dtype=float)
-        return MaterialDataset(
+        lambda_um = _make_readonly(np.asarray([0.1, 100.0], dtype=float))
+        ds = MaterialDataset(
             material="Air",
             source="constant vacuum/air approximation",
             file=Path(""),
             lambda_um=lambda_um,
-            n=np.ones_like(lambda_um),
-            k=np.zeros_like(lambda_um),
+            n=_make_readonly(np.ones_like(lambda_um)),
+            k=_make_readonly(np.zeros_like(lambda_um)),
             metadata={
                 "material": "Air",
                 "source": "constant vacuum/air approximation",
@@ -123,6 +148,8 @@ def load_real_material(material: str, source_contains: str | None = None) -> Mat
                 "type": "constant",
             },
         )
+        _MATERIAL_CACHE[cache_key] = ds
+        return ds
 
     entry = _find_manifest_entry(material, source_contains=source_contains)
     path = PROJECT_DIR / str(entry["file"])
@@ -135,15 +162,17 @@ def load_real_material(material: str, source_contains: str | None = None) -> Mat
     k_vals = np.asarray(data["k"], dtype=float)
     order = np.argsort(lambda_um)
 
-    return MaterialDataset(
+    ds = MaterialDataset(
         material=str(entry["material"]),
         source=str(entry["source"]),
         file=path,
-        lambda_um=lambda_um[order],
-        n=n_vals[order],
-        k=k_vals[order],
+        lambda_um=_make_readonly(lambda_um[order]),
+        n=_make_readonly(n_vals[order]),
+        k=_make_readonly(k_vals[order]),
         metadata=dict(entry),
     )
+    _MATERIAL_CACHE[cache_key] = ds
+    return ds
 
 
 def material_nk_at(

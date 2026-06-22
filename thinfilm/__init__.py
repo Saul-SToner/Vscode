@@ -58,6 +58,7 @@ from .education import (
     LayerSpec,
     REPORT_CHAPTER2_CASES,
     REPORT_COMPARISON_FIGURES,
+    _multilayer_rt_spectrum_scalar,
     build_double_ar_layers,
     build_fp_double_halfwave_layers,
     build_fp_single_halfwave_layers,
@@ -85,8 +86,9 @@ from .education import (
     simulate_report_design,
     simulate_report_design_real_materials,
 )
-from .io import SpectrumData, load_reflectance_spec, load_spectrum_csv, read_reflectance_csv
+from .io import LoadedCSV, SpectrumData, load_reflectance_spec, load_spectrum_csv, parse_loaded_csv, read_csv_once, read_reflectance_csv
 from .materials import (
+    clear_material_cache,
     common_wavelength_window_um,
     export_real_material_library,
     load_real_material,
@@ -304,6 +306,7 @@ __all__ = [
     "load_spectrum_csv",
     "load_reflectance_spec",
     "load_real_material",
+    "clear_material_cache",
     "common_wavelength_window_um",
     "material_complex_index",
     "material_nk_at",

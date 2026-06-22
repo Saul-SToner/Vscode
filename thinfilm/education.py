@@ -27,17 +27,18 @@ from .materials import (
     material_complex_index,
 )
 from .paths import OUTPUT_DIR, output_file
+from ._shared import (
+    MAIN_RED,
+    TARGET_GREEN,
+    TRANS_BLUE,
+    ABS_GOLD,
+    GRID_COLOR,
+    TEXT_DARK,
+    PANEL_BG,
+    apply_font_defaults,
+)
 
-plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Noto Sans CJK SC", "Arial Unicode MS", "DejaVu Sans"]
-plt.rcParams["axes.unicode_minus"] = False
-
-MAIN_RED = "#c94f2d"
-TARGET_GREEN = "#0f766e"
-TRANS_BLUE = "#1d4ed8"
-ABS_GOLD = "#b7791f"
-GRID_COLOR = "#d7dde5"
-TEXT_DARK = "#223046"
-PANEL_BG = "#f7f8fb"
+apply_font_defaults()
 
 
 @dataclass(frozen=True)
@@ -930,15 +931,15 @@ def _q_admittance(n_layer: complex, cos_theta_layer: complex, pol: str) -> compl
     raise ValueError("pol must be 's' or 'p'.")
 
 
-def multilayer_rt_spectrum(
+def _multilayer_rt_spectrum_scalar(
     wavelengths_nm: Sequence[float],
     layers: Sequence[LayerSpec],
     n_incident: complex = 1.0 + 0.0j,
-    n_substrate: complex = 1.52 + 0.0j,
+    n_substrate: complex = 1.52 + 0j,
     theta0_deg: float = 0.0,
     pol: str = "p",
 ) -> Dict[str, np.ndarray]:
-    """Characteristic-matrix solution for a general multilayer stack."""
+    """Scalar (per-wavelength loop) TMM reference implementation."""
     wavelengths_nm = np.asarray(wavelengths_nm, dtype=float).ravel()
     n0 = complex(n_incident)
     ns = complex(n_substrate)
@@ -992,6 +993,88 @@ def multilayer_rt_spectrum(
         "R": np.asarray(r_power, dtype=float),
         "T": np.asarray(t_power, dtype=float),
         "A": np.asarray(a_power, dtype=float),
+    }
+
+
+def multilayer_rt_spectrum(
+    wavelengths_nm: Sequence[float],
+    layers: Sequence[LayerSpec],
+    n_incident: complex = 1.0 + 0.0j,
+    n_substrate: complex = 1.52 + 0j,
+    theta0_deg: float = 0.0,
+    pol: str = "p",
+) -> Dict[str, np.ndarray]:
+    """Characteristic-matrix solution for a general multilayer stack.
+
+    Vectorized over wavelengths: the layer loop is retained but each layer
+    processes all wavelengths simultaneously via NumPy array operations.
+    """
+    wavelengths_nm = np.asarray(wavelengths_nm, dtype=float).ravel()
+    N = len(wavelengths_nm)
+    lam_m = wavelengths_nm * 1e-9  # shape (N,)
+
+    n0 = complex(n_incident)
+    ns = complex(n_substrate)
+    theta0_deg_f = float(theta0_deg)
+
+    # Pre-compute incident/substrate quantities (wavelength-independent)
+    cos_theta0 = _cos_theta_in_layer(n0, n0, theta0_deg_f)
+    cos_thetas = _cos_theta_in_layer(n0, ns, theta0_deg_f)
+    q0 = _q_admittance(n0, cos_theta0, pol)
+    qs = _q_admittance(ns, cos_thetas, pol)
+
+    # Accumulated matrix elements — shape (N,) for each
+    M00 = np.ones(N, dtype=complex)
+    M01 = np.zeros(N, dtype=complex)
+    M10 = np.zeros(N, dtype=complex)
+    M11 = np.ones(N, dtype=complex)
+
+    # Layer loop (typically 3-21 iterations — cheap compared to wavelength count)
+    for layer in layers:
+        n_layer = complex(layer.n)
+        d_m = float(layer.thickness_nm) * 1e-9
+        cos_theta_layer = _cos_theta_in_layer(n0, n_layer, theta0_deg_f)
+        q_layer = _q_admittance(n_layer, cos_theta_layer, pol)
+
+        # Phase thickness for all wavelengths at once: shape (N,)
+        delta = (2.0 * np.pi * n_layer * d_m * cos_theta_layer) / lam_m
+
+        c = np.cos(delta)
+        s = np.sin(delta)
+
+        # Layer matrix elements (scalar for this layer, broadcast over wavelengths)
+        A00 = c
+        A01 = 1j * s / q_layer
+        A10 = 1j * q_layer * s
+        A11 = c
+
+        # Matrix multiply: M_new = M @ A  (element-wise over wavelengths)
+        new00 = M00 * A00 + M01 * A10
+        new01 = M00 * A01 + M01 * A11
+        new10 = M10 * A00 + M11 * A10
+        new11 = M10 * A01 + M11 * A11
+
+        M00, M01, M10, M11 = new00, new01, new10, new11
+
+    # Reflection and transmission from final matrix
+    b_val = M00 + M01 * qs
+    c_val = M10 + M11 * qs
+    y_in = c_val / b_val
+    r_complex = (q0 - y_in) / (q0 + y_in)
+    t_complex = (2.0 * q0) / (q0 * b_val + c_val)
+
+    R = np.abs(r_complex) ** 2
+    t_scale = float(np.real(qs / q0))
+    T = np.maximum(0.0, np.abs(t_complex) ** 2 * t_scale)
+    A = np.maximum(0.0, 1.0 - R - T)
+
+    return {
+        "wavelength_nm": wavelengths_nm.astype(float),
+        "r_complex": r_complex.astype(complex),
+        "t_complex": t_complex.astype(complex),
+        "R": R.astype(float),
+        "T": T.astype(float),
+        "A": A.astype(float),
     }
 
 
@@ -1053,6 +1136,33 @@ def _layer_role_for_material_map(layer_name: str, design_type: str) -> str | Non
     return None
 
 
+def _material_or_constant_index_array(
+    role: str,
+    wavelengths_nm: np.ndarray,
+    material_map: Dict[str, Any],
+    fallback: complex,
+    *,
+    allow_extrapolate: bool,
+) -> np.ndarray:
+    """Return refractive index array of shape (N,) for all wavelengths at once."""
+    value = material_map.get(role)
+    if value is None:
+        return np.full(len(wavelengths_nm), complex(fallback), dtype=complex)
+    if isinstance(value, (int, float, complex)):
+        return np.full(len(wavelengths_nm), complex(value), dtype=complex)
+    material = canonical_material_name(str(value))
+    if material == "Air":
+        return np.ones(len(wavelengths_nm), dtype=complex)
+    return np.asarray(
+        material_complex_index(
+            material,
+            wavelengths_nm.tolist(),
+            allow_extrapolate=allow_extrapolate,
+        ),
+        dtype=complex,
+    )
+
+
 def multilayer_rt_spectrum_real_materials(
     wavelengths_nm: Sequence[float],
     layers: Sequence[LayerSpec],
@@ -1064,65 +1174,106 @@ def multilayer_rt_spectrum_real_materials(
     pol: str = "p",
     allow_extrapolate: bool = False,
 ) -> Dict[str, np.ndarray]:
-    """Characteristic-matrix spectrum with wavelength-dependent material n/k."""
+    """Characteristic-matrix spectrum with wavelength-dependent material n/k.
+
+    Loads all material n(k) arrays once, constructs wavelength-dependent
+    layer indices, and calls the vectorized TMM kernel in a single pass.
+    """
     wavelengths_nm = np.asarray(wavelengths_nm, dtype=float).ravel()
-    r_vals: List[complex] = []
-    t_vals: List[complex] = []
-    r_power: List[float] = []
-    t_power: List[float] = []
-    a_power: List[float] = []
+    N = len(wavelengths_nm)
+    lam_m = wavelengths_nm * 1e-9
 
-    for lam_nm in wavelengths_nm:
-        n0 = _material_or_constant_index(
-            "n_incident",
-            float(lam_nm),
-            material_map,
-            role_fallback_indices["n_incident"],
-            allow_extrapolate=allow_extrapolate,
-        )
-        ns = _material_or_constant_index(
-            "n_substrate",
-            float(lam_nm),
-            material_map,
-            role_fallback_indices["n_substrate"],
-            allow_extrapolate=allow_extrapolate,
-        )
-        dispersive_layers: List[LayerSpec] = []
-        for layer in layers:
-            role = _layer_role_for_material_map(layer.name, design_type)
-            if role is None:
-                n_layer = complex(layer.n)
-            else:
-                n_layer = _material_or_constant_index(
-                    role,
-                    float(lam_nm),
-                    material_map,
-                    role_fallback_indices.get(role, complex(layer.n)),
-                    allow_extrapolate=allow_extrapolate,
-                )
-            dispersive_layers.append(LayerSpec(layer.name, n_layer, layer.thickness_nm))
+    n0 = _material_or_constant_index_array(
+        "n_incident", wavelengths_nm, material_map,
+        role_fallback_indices["n_incident"], allow_extrapolate=allow_extrapolate,
+    )
+    ns = _material_or_constant_index_array(
+        "n_substrate", wavelengths_nm, material_map,
+        role_fallback_indices["n_substrate"], allow_extrapolate=allow_extrapolate,
+    )
 
-        item = multilayer_rt_spectrum(
-            wavelengths_nm=[float(lam_nm)],
-            layers=dispersive_layers,
-            n_incident=n0,
-            n_substrate=ns,
-            theta0_deg=theta0_deg,
-            pol=pol,
-        )
-        r_vals.append(complex(item["r_complex"][0]))
-        t_vals.append(complex(item["t_complex"][0]))
-        r_power.append(float(item["R"][0]))
-        t_power.append(float(item["T"][0]))
-        a_power.append(float(item["A"][0]))
+    # Pre-compute incident/substrate quantities per wavelength
+    sin_theta0 = np.sin(np.deg2rad(float(theta0_deg)))
+    cos_theta0_arr = np.sqrt(1.0 - (n0 * sin_theta0 / n0) ** 2 + 0j)
+    cos_thetas_arr = np.sqrt(1.0 - (n0 * sin_theta0 / ns) ** 2 + 0j)
+    # Ensure positive real part
+    cos_theta0_arr = np.where(np.real(cos_theta0_arr) < 0, -cos_theta0_arr, cos_theta0_arr)
+    cos_thetas_arr = np.where(np.real(cos_thetas_arr) < 0, -cos_thetas_arr, cos_thetas_arr)
+
+    pol_key = pol.strip().lower()
+    if pol_key == "s":
+        q0_arr = n0 * cos_theta0_arr
+        qs_arr = ns * cos_thetas_arr
+    elif pol_key == "p":
+        q0_arr = cos_theta0_arr / n0
+        qs_arr = cos_thetas_arr / ns
+    else:
+        raise ValueError("pol must be 's' or 'p'.")
+
+    # Accumulated matrix elements — shape (N,)
+    M00 = np.ones(N, dtype=complex)
+    M01 = np.zeros(N, dtype=complex)
+    M10 = np.zeros(N, dtype=complex)
+    M11 = np.ones(N, dtype=complex)
+
+    for layer in layers:
+        role = _layer_role_for_material_map(layer.name, design_type)
+        if role is None:
+            n_layer = np.full(N, complex(layer.n), dtype=complex)
+        else:
+            n_layer = _material_or_constant_index_array(
+                role, wavelengths_nm, material_map,
+                role_fallback_indices.get(role, complex(layer.n)),
+                allow_extrapolate=allow_extrapolate,
+            )
+
+        d_m = float(layer.thickness_nm) * 1e-9
+
+        # Per-wavelength cos_theta and q for this layer
+        cos_theta_layer = np.sqrt(1.0 - (n0 * sin_theta0 / n_layer) ** 2 + 0j)
+        cos_theta_layer = np.where(np.real(cos_theta_layer) < 0, -cos_theta_layer, cos_theta_layer)
+
+        if pol_key == "s":
+            q_layer = n_layer * cos_theta_layer
+        else:
+            q_layer = cos_theta_layer / n_layer
+
+        # Phase thickness: shape (N,)
+        delta = (2.0 * np.pi * n_layer * d_m * cos_theta_layer) / lam_m
+
+        c = np.cos(delta)
+        s = np.sin(delta)
+
+        A00 = c
+        A01 = 1j * s / q_layer
+        A10 = 1j * q_layer * s
+        A11 = c
+
+        new00 = M00 * A00 + M01 * A10
+        new01 = M00 * A01 + M01 * A11
+        new10 = M10 * A00 + M11 * A10
+        new11 = M10 * A01 + M11 * A11
+
+        M00, M01, M10, M11 = new00, new01, new10, new11
+
+    b_val = M00 + M01 * qs_arr
+    c_val = M10 + M11 * qs_arr
+    y_in = c_val / b_val
+    r_complex = (q0_arr - y_in) / (q0_arr + y_in)
+    t_complex = (2.0 * q0_arr) / (q0_arr * b_val + c_val)
+
+    R = np.abs(r_complex) ** 2
+    t_scale = np.real(qs_arr / q0_arr)
+    T = np.maximum(0.0, np.abs(t_complex) ** 2 * t_scale)
+    A = np.maximum(0.0, 1.0 - R - T)
 
     return {
         "wavelength_nm": wavelengths_nm.astype(float),
-        "r_complex": np.asarray(r_vals, dtype=complex),
-        "t_complex": np.asarray(t_vals, dtype=complex),
-        "R": np.asarray(r_power, dtype=float),
-        "T": np.asarray(t_power, dtype=float),
-        "A": np.asarray(a_power, dtype=float),
+        "r_complex": r_complex.astype(complex),
+        "t_complex": t_complex.astype(complex),
+        "R": R.astype(float),
+        "T": T.astype(float),
+        "A": A.astype(float),
     }
 
 

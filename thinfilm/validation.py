@@ -11,19 +11,27 @@ import numpy as np
 from matplotlib.font_manager import FontProperties
 
 from .education import list_report_chapter2_cases, simulate_report_case
-from .io import load_spectrum_csv
+from .io import load_spectrum_csv, read_csv_once, parse_loaded_csv
 from .paths import output_file
+from ._shared import (
+    MAIN_RED,
+    REF_BLUE,
+    ERR_GOLD,
+    TARGET_GREEN,
+    GRID_COLOR,
+    TEXT_DARK,
+    PANEL_BG,
+    apply_font_defaults,
+    style_axis,
+    default_case_quantity,
+    reference_kind_to_quantity,
+    pick_quantity,
+    series_for_quantity,
+    resample_pair,
+    error_metrics,
+)
 
-plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Noto Sans CJK SC", "Arial Unicode MS", "DejaVu Sans"]
-plt.rcParams["axes.unicode_minus"] = False
-
-MAIN_RED = "#c94f2d"
-REF_BLUE = "#1d4ed8"
-ERR_GOLD = "#b7791f"
-TARGET_GREEN = "#0f766e"
-GRID_COLOR = "#d7dde5"
-TEXT_DARK = "#223046"
-PANEL_BG = "#f7f8fb"
+apply_font_defaults()
 CN_FONT_CANDIDATES = (
     Path(r"C:\Windows\Fonts\msyh.ttc"),
     Path(r"C:\Windows\Fonts\simhei.ttf"),
@@ -45,17 +53,6 @@ EXPANSION_VALIDATION_CASE_IDS: tuple[str, ...] = (
     "narrowband_filter",
     "rugate_filter",
 )
-
-
-def _style_axis(ax: plt.Axes) -> None:
-    ax.set_facecolor(PANEL_BG)
-    ax.grid(True, alpha=0.35, color=GRID_COLOR, linewidth=0.8)
-    for spine in ax.spines.values():
-        spine.set_color("#c9d2dc")
-    ax.tick_params(colors=TEXT_DARK)
-    ax.xaxis.label.set_color(TEXT_DARK)
-    ax.yaxis.label.set_color(TEXT_DARK)
-    ax.title.set_color(TEXT_DARK)
 
 
 def _cn_font() -> FontProperties | None:
@@ -111,33 +108,6 @@ def _validation_core_metrics_cn(result: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _default_case_quantity(case_id: str) -> str:
-    key = str(case_id).strip().lower()
-    if "fp_" in key:
-        return "T"
-    return "R"
-
-
-def _reference_kind_to_quantity(y_kind: str) -> str | None:
-    key = str(y_kind).strip().lower()
-    if "trans" in key:
-        return "T"
-    if "abs" in key:
-        return "A"
-    if "reflect" in key:
-        return "R"
-    return None
-
-
-def _pick_quantity(case_id: str, reference_kind: str, quantity: str | None) -> str:
-    if quantity is not None:
-        return str(quantity).strip().upper()
-    ref_quantity = _reference_kind_to_quantity(reference_kind)
-    if ref_quantity is not None:
-        return ref_quantity
-    return _default_case_quantity(case_id)
-
-
 def _selector_fallbacks(quantity: str, selector: int | str | None) -> List[int | str | None]:
     candidates: List[int | str | None] = []
     if selector is not None:
@@ -160,38 +130,6 @@ def _selector_fallbacks(quantity: str, selector: int | str | None) -> List[int |
     return deduped
 
 
-def _series_for_quantity(result: Dict[str, Any], quantity: str) -> np.ndarray:
-    key = str(quantity).strip().upper()
-    if key not in {"R", "T", "A"}:
-        raise ValueError("quantity must be 'R', 'T', or 'A'.")
-    return np.asarray(result[key], dtype=float)
-
-
-def _resample_pair(
-    x1_nm: np.ndarray,
-    y1: np.ndarray,
-    x2_nm: np.ndarray,
-    y2: np.ndarray,
-    n_grid: int = 600,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    x_min = max(float(np.min(x1_nm)), float(np.min(x2_nm)))
-    x_max = min(float(np.max(x1_nm)), float(np.max(x2_nm)))
-    if x_max <= x_min:
-        raise ValueError("Theory and reference curves do not overlap in wavelength.")
-    grid = np.linspace(x_min, x_max, max(int(n_grid), 50))
-    return grid, np.interp(grid, x1_nm, y1), np.interp(grid, x2_nm, y2)
-
-
-def _error_metrics(theory: np.ndarray, reference: np.ndarray) -> Dict[str, float]:
-    diff = np.asarray(theory, dtype=float) - np.asarray(reference, dtype=float)
-    return {
-        "mae": float(np.mean(np.abs(diff))),
-        "rmse": float(np.sqrt(np.mean(diff ** 2))),
-        "max_abs_error": float(np.max(np.abs(diff))),
-        "mean_bias": float(np.mean(diff)),
-    }
-
-
 def compare_teaching_case_to_reference(
     case_id: str,
     reference_csv: Path | str,
@@ -206,24 +144,25 @@ def compare_teaching_case_to_reference(
 
     theory_result = simulate_report_case(case_id, **case_overrides)
     requested_quantity = quantity
+    loaded = read_csv_once(Path(reference_csv))
     ref_spec = None
     last_error: Exception | None = None
     for selector_try in _selector_fallbacks(str(requested_quantity or ""), y_selector):
         try:
-            ref_spec = load_spectrum_csv(Path(reference_csv), y_selector=selector_try)
+            ref_spec = parse_loaded_csv(loaded, y_selector=selector_try)
             break
         except Exception as exc:
             last_error = exc
     if ref_spec is None:
         raise ValueError(f"无法读取参考曲线列: {reference_csv}. 最后错误: {last_error}")
 
-    active_quantity = _pick_quantity(case_id, ref_spec.y_kind, requested_quantity)
-    theory_y = _series_for_quantity(theory_result, active_quantity)
+    active_quantity = pick_quantity(case_id, ref_spec.y_kind, requested_quantity)
+    theory_y = series_for_quantity(theory_result, active_quantity)
     ref_x = np.asarray(ref_spec.x_nm, dtype=float)
     ref_y = np.asarray(ref_spec.y, dtype=float)
     theory_x = np.asarray(theory_result["wavelength_nm"], dtype=float)
 
-    grid_nm, theory_i, reference_i = _resample_pair(
+    grid_nm, theory_i, reference_i = resample_pair(
         theory_x,
         theory_y,
         ref_x,
@@ -231,7 +170,7 @@ def compare_teaching_case_to_reference(
         n_grid=n_grid,
     )
     error = theory_i - reference_i
-    metrics = _error_metrics(theory_i, reference_i)
+    metrics = error_metrics(theory_i, reference_i)
 
     lambda0_nm = float(theory_result["lambda0_nm"])
     theory_at_lambda0 = float(np.interp(lambda0_nm, grid_nm, theory_i))
@@ -397,7 +336,7 @@ def build_teaching_expansion_validation_templates(
         if case_id not in case_map:
             continue
         item = case_map[case_id]
-        quantity = _default_case_quantity(case_id)
+        quantity = default_case_quantity(case_id)
         y_selector = f"{quantity} (1)"
         result = simulate_report_case(case_id)
         templates.append(
@@ -615,8 +554,8 @@ def export_teaching_validation_result(
         png_path = output_file(f"{stem}_main.png")
         fig, axes = plt.subplots(2, 1, figsize=(8.4, 7.0), sharex=True, height_ratios=[2.2, 1.0])
         ax0, ax1 = axes
-        _style_axis(ax0)
-        _style_axis(ax1)
+        style_axis(ax0)
+        style_axis(ax1)
 
         ax0.plot(wl, theory, color=MAIN_RED, linewidth=2.4, label="理论曲线")
         ax0.plot(wl, reference, color=REF_BLUE, linewidth=2.0, alpha=0.92, label=result["reference_label"])
@@ -657,7 +596,7 @@ def export_teaching_validation_result(
         analysis_png = output_file(f"{stem}_analysis.png")
         fig2, axes2 = plt.subplots(1, 3, figsize=(11.0, 3.8))
         for ax in axes2:
-            _style_axis(ax)
+            style_axis(ax)
 
         labels = ["MAE", "RMSE", "MaxErr"]
         vals = [summary["mae"], summary["rmse"], summary["max_abs_error"]]
@@ -775,7 +714,7 @@ def export_teaching_validation_suite_summary(
 
     fig, axes = plt.subplots(1, 2, figsize=(12.0, 4.4))
     for ax in axes:
-        _style_axis(ax)
+        style_axis(ax)
 
     width = 0.24
     axes[0].bar(x - width, maes, width=width, color=MAIN_RED, label="平均绝对误差", alpha=0.92)
@@ -1412,7 +1351,7 @@ def export_advanced_ar_bundle(
             wl = np.asarray(comp["wavelength_nm"], dtype=float)
             ref = np.asarray(comp["reference"], dtype=float)
             ax.plot(wl, ref, linewidth=2.0, label=row["topic_cn"])
-        _style_axis(ax)
+        style_axis(ax)
         _set_axis_labels_cn(ax, title="参考曲线总览", xlabel="波长 (nm)", ylabel="反射率 R")
         ax.legend(prop=font, frameon=False, loc="best")
 
@@ -1432,7 +1371,7 @@ def export_advanced_ar_bundle(
             color=REF_BLUE,
             label="2D 蛾眼梯形结构（COMSOL）",
         )
-        _style_axis(ax)
+        style_axis(ax)
         _set_axis_labels_cn(ax, title="减反结构演化对照", xlabel="波长 (nm)", ylabel="反射率 R")
         ax.legend(prop=font, frameon=False, loc="best")
 
@@ -1455,7 +1394,7 @@ def export_advanced_ar_bundle(
                 fontsize=9,
                 color=TEXT_DARK,
             )
-        _style_axis(ax)
+        style_axis(ax)
         _set_axis_labels_cn(ax, title="550 nm 处反射率", xlabel="结构类型", ylabel="反射率 R")
 
         # Panel 4: validation MAE
@@ -1474,7 +1413,7 @@ def export_advanced_ar_bundle(
                 fontsize=9,
                 color=TEXT_DARK,
             )
-        _style_axis(ax)
+        style_axis(ax)
         _set_axis_labels_cn(ax, title="理论与参考曲线 MAE", xlabel="结构类型", ylabel="MAE")
 
         # Panel 5: mean reflectance
@@ -1496,7 +1435,7 @@ def export_advanced_ar_bundle(
                 fontsize=9,
                 color=TEXT_DARK,
             )
-        _style_axis(ax)
+        style_axis(ax)
         _set_axis_labels_cn(ax, title="平均反射率", xlabel="结构类型", ylabel="平均反射率 R")
 
         axes[1, 2].axis("off")
@@ -1543,9 +1482,10 @@ def analyze_quasi_random_absorbing_surface(
 ) -> Dict[str, Any]:
     """Analyze a 2D periodic quasi-random rough absorbing surface CSV."""
 
-    r_spec = load_spectrum_csv(Path(reference_csv), x_selector=x_selector, y_selector=r_selector)
-    t_spec = load_spectrum_csv(Path(reference_csv), x_selector=x_selector, y_selector=t_selector)
-    a_spec = load_spectrum_csv(Path(reference_csv), x_selector=x_selector, y_selector=a_selector)
+    loaded = read_csv_once(Path(reference_csv))
+    r_spec = parse_loaded_csv(loaded, x_selector=x_selector, y_selector=r_selector)
+    t_spec = parse_loaded_csv(loaded, x_selector=x_selector, y_selector=t_selector)
+    a_spec = parse_loaded_csv(loaded, x_selector=x_selector, y_selector=a_selector)
 
     wl = np.asarray(r_spec.x_nm, dtype=float)
     r_vals = np.asarray(r_spec.y, dtype=float)
@@ -1677,7 +1617,7 @@ def export_quasi_random_absorbing_surface_bundle(
         ax.plot(wl, t_vals, color=REF_BLUE, linewidth=2.0, label="透射率 T")
         ax.plot(wl, a_vals, color=TARGET_GREEN, linewidth=2.4, label="吸收率 A")
         ax.axvline(float(lambda0_nm), color="#7a8696", linestyle="--", linewidth=1.2)
-        _style_axis(ax)
+        style_axis(ax)
         _set_axis_labels_cn(ax, title="R / T / A 光谱", xlabel="波长 (nm)", ylabel="比例")
         ax.legend(prop=font, frameon=False, loc="best")
 
@@ -1686,7 +1626,7 @@ def export_quasi_random_absorbing_surface_bundle(
         peak_idx = int(np.argmax(a_vals))
         ax.scatter([wl[peak_idx]], [a_vals[peak_idx]], color=TARGET_GREEN, s=42, zorder=3)
         ax.axvline(float(summary["A_peak_wavelength_nm"]), color="#7a8696", linestyle="--", linewidth=1.2)
-        _style_axis(ax)
+        style_axis(ax)
         _set_axis_labels_cn(ax, title="吸收增强主曲线", xlabel="波长 (nm)", ylabel="吸收率 A")
 
         ax = axes[1, 0]
@@ -1711,7 +1651,7 @@ def export_quasi_random_absorbing_surface_bundle(
                 fontsize=9,
                 color=TEXT_DARK,
             )
-        _style_axis(ax)
+        style_axis(ax)
         _set_axis_labels_cn(ax, title="550 nm 处能量分配", xlabel="指标", ylabel="比例")
 
         ax = axes[1, 1]
@@ -1736,7 +1676,7 @@ def export_quasi_random_absorbing_surface_bundle(
                 fontsize=9,
                 color=TEXT_DARK,
             )
-        _style_axis(ax)
+        style_axis(ax)
         _set_axis_labels_cn(ax, title="全波段平均能量分配", xlabel="指标", ylabel="比例")
 
         png_path = output_file(f"{prefix}_overview.png")
@@ -1836,14 +1776,14 @@ def export_absorbing_surface_comparison(
     ax = axes[0, 0]
     ax.plot(wl_a, a_a, color=TARGET_GREEN, linewidth=2.4, label=f"{label_a} 吸收率 A")
     ax.plot(wl_b, a_b, color="#6b46c1", linewidth=2.4, linestyle="--", label=f"{label_b} 吸收率 A")
-    _style_axis(ax)
+    style_axis(ax)
     _set_axis_labels_cn(ax, title="吸收率对比", xlabel="波长 (nm)", ylabel="吸收率 A")
     ax.legend(prop=font, frameon=False, loc="best")
 
     ax = axes[0, 1]
     ax.plot(wl_a, r_a, color=MAIN_RED, linewidth=2.0, label=f"{label_a} 反射率 R")
     ax.plot(wl_b, r_b, color="#d97706", linewidth=2.0, linestyle="--", label=f"{label_b} 反射率 R")
-    _style_axis(ax)
+    style_axis(ax)
     _set_axis_labels_cn(ax, title="反射率对比", xlabel="波长 (nm)", ylabel="反射率 R")
     ax.legend(prop=font, frameon=False, loc="best")
 
@@ -1872,7 +1812,7 @@ def export_absorbing_surface_comparison(
                 fontsize=9,
                 color=TEXT_DARK,
             )
-    _style_axis(ax)
+    style_axis(ax)
     _set_axis_labels_cn(ax, title="吸收性能关键指标", xlabel="指标", ylabel="比例")
     ax.legend(prop=font, frameon=False, loc="best")
 
@@ -1901,7 +1841,7 @@ def export_absorbing_surface_comparison(
             fontsize=9,
             color=TEXT_DARK,
         )
-    _style_axis(ax)
+    style_axis(ax)
     _set_axis_labels_cn(ax, title="版本2 相对版本1 的变化", xlabel="指标", ylabel="差值")
 
     png_path = output_file(f"{prefix}.png")
@@ -1990,7 +1930,7 @@ def export_absorbing_surface_roughness_sweep(
 
     fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.5), constrained_layout=True)
     for ax in axes:
-        _style_axis(ax)
+        style_axis(ax)
 
     ax = axes[0]
     ax.plot(x, r_mean, color=MAIN_RED, marker="o", linewidth=2.0, label="平均R")
@@ -2291,7 +2231,7 @@ def export_porous_double_ar_sensitivity_bundle(
         x = np.asarray([row["param_value"] for row in rows], dtype=float)
         y1 = np.asarray([row["R_at_lambda0"] for row in rows], dtype=float)
         y2 = np.asarray([row["R_mean"] for row in rows], dtype=float)
-        _style_axis(ax)
+        style_axis(ax)
         ax.plot(x, y1, color=MAIN_RED, marker="o", linewidth=2.2, label="R@550")
         ax.plot(x, y2, color=REF_BLUE, marker="o", linewidth=2.0, label="平均R")
         for xi, yi in zip(x, y1):
@@ -2548,7 +2488,7 @@ def export_absorbing_surface_gain_bundle(
     ax = axes[0, 0]
     ax.plot(wl_b, a_b, color=REF_BLUE, linewidth=2.2, label=f"{baseline_label} 吸收率 A")
     ax.plot(wl_r, a_r, color=TARGET_GREEN, linewidth=2.4, label=f"{rough_label} 吸收率 A")
-    _style_axis(ax)
+    style_axis(ax)
     _set_axis_labels_cn(ax, title="吸收率光谱对比", xlabel="波长 (nm)", ylabel="吸收率 A")
     ax.legend(prop=font, frameon=False, loc="best")
 
@@ -2557,7 +2497,7 @@ def export_absorbing_surface_gain_bundle(
     ax.plot(wl_r, r_r, color="#d97706", linewidth=2.0, linestyle="--", label=f"{rough_label} 反射率 R")
     ax.plot(wl_b, t_b, color=REF_BLUE, linewidth=1.8, alpha=0.75, label=f"{baseline_label} 透射率 T")
     ax.plot(wl_r, t_r, color="#5b21b6", linewidth=1.8, linestyle="--", alpha=0.75, label=f"{rough_label} 透射率 T")
-    _style_axis(ax)
+    style_axis(ax)
     _set_axis_labels_cn(ax, title="反射/透射变化", xlabel="波长 (nm)", ylabel="比例")
     ax.legend(prop=font, frameon=False, loc="best")
 
@@ -2586,7 +2526,7 @@ def export_absorbing_surface_gain_bundle(
                 fontsize=9,
                 color=TEXT_DARK,
             )
-    _style_axis(ax)
+    style_axis(ax)
     _set_axis_labels_cn(ax, title="吸收增益关键指标", xlabel="指标", ylabel="比例")
     ax.legend(prop=font, frameon=False, loc="best")
 
@@ -2615,7 +2555,7 @@ def export_absorbing_surface_gain_bundle(
             fontsize=9,
             color=TEXT_DARK,
         )
-    _style_axis(ax)
+    style_axis(ax)
     _set_axis_labels_cn(ax, title="粗糙表面相对平面基准的变化", xlabel="指标", ylabel="差值")
 
     png_path = output_file(f"{prefix}.png")
@@ -2760,7 +2700,7 @@ def export_absorbing_surface_gain_trend_bundle(
 
     fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.8), constrained_layout=True)
     for ax in axes:
-        _style_axis(ax)
+        style_axis(ax)
 
     ax = axes[0]
     ax.plot(x, delta_a_mean, color=TARGET_GREEN, marker="o", linewidth=2.4, label="Δ平均A")
@@ -3128,7 +3068,7 @@ def export_tamm_dw_phase_bundle(
         wl = np.asarray(item["wavelength_um"], dtype=float)
         a_vals = np.asarray(item["A"], dtype=float)
         ax.plot(wl, a_vals, color=color, linewidth=2.0, label=f"dW={item['dW_nm']:.0f} nm")
-    _style_axis(ax)
+    style_axis(ax)
     _set_axis_labels_cn(ax, title="吸收谱 A(λ)", xlabel="波长 (μm)", ylabel="吸收率 A")
     ax.legend(prop=font, frameon=False, loc="best")
 
@@ -3137,7 +3077,7 @@ def export_tamm_dw_phase_bundle(
         wl = np.asarray(item["wavelength_um"], dtype=float)
         phase = np.asarray(item["phase_unwrapped_rad"], dtype=float)
         ax.plot(wl, phase, color=color, linewidth=2.0, label=f"dW={item['dW_nm']:.0f} nm")
-    _style_axis(ax)
+    style_axis(ax)
     _set_axis_labels_cn(ax, title="反射相位（展开）", xlabel="波长 (μm)", ylabel="相位 (rad)")
 
     ax = axes[1, 0]
@@ -3145,7 +3085,7 @@ def export_tamm_dw_phase_bundle(
     amax = [float(item["summary"]["A_max"]) for item in groups]
     peaks = [float(item["summary"]["peak_wavelength_um"]) for item in groups]
     ax.plot(dws, amax, color=TARGET_GREEN, linewidth=2.4, marker="o")
-    _style_axis(ax)
+    style_axis(ax)
     _set_axis_labels_cn(ax, title="峰值吸收率随 d_W 变化", xlabel="d_W (nm)", ylabel="A_max")
 
     ax = axes[1, 1]
@@ -3153,7 +3093,7 @@ def export_tamm_dw_phase_bundle(
     ax2 = ax.twinx()
     spans = [float(item["summary"]["phase_unwrapped_span_rad"]) for item in groups]
     ax2.plot(dws, spans, color=ERR_GOLD, linewidth=2.0, marker="s", linestyle="--", label="相位跨度")
-    _style_axis(ax)
+    style_axis(ax)
     _set_axis_labels_cn(ax, title="峰位与相位跨度", xlabel="d_W (nm)", ylabel="峰位 (μm)")
     ax2.set_ylabel("相位跨度 (rad)", color=TEXT_DARK)
     ax2.tick_params(colors=TEXT_DARK)
@@ -3258,7 +3198,7 @@ def export_tamm_phase_focus_bundle(
         ax.plot(wl, a_vals, color=color, linewidth=2.4, label=f"dW={item['dW_nm']:.0f} nm")
         peak_idx = int(np.argmax(a_vals))
         ax.scatter([wl[peak_idx]], [a_vals[peak_idx]], color=color, s=28, zorder=3)
-    _style_axis(ax)
+    style_axis(ax)
     _set_axis_labels_cn(ax, title="代表点吸收谱对比", xlabel="波长 (μm)", ylabel="吸收率 A")
     ax.legend(prop=font, frameon=False, loc="best")
 
@@ -3267,7 +3207,7 @@ def export_tamm_phase_focus_bundle(
         wl = np.asarray(item["wavelength_um"], dtype=float)
         phase = np.asarray(item["phase_unwrapped_rad"], dtype=float)
         ax.plot(wl, phase, color=color, linewidth=2.4, label=f"dW={item['dW_nm']:.0f} nm")
-    _style_axis(ax)
+    style_axis(ax)
     _set_axis_labels_cn(ax, title="代表点反射相位对比", xlabel="波长 (μm)", ylabel="展开相位 (rad)")
     ax.legend(prop=font, frameon=False, loc="best")
 
@@ -3488,7 +3428,7 @@ def export_tamm_interface_priority_bundle(
         ax.set_xticklabels(labels, rotation=20)
     else:
         ax.set_xticklabels(labels, rotation=20, fontproperties=font)
-    _style_axis(ax)
+    style_axis(ax)
     _set_axis_labels_cn(ax, title="候选对综合评分", xlabel="d_W 候选对 (nm)", ylabel="综合评分")
     for bar, value in zip(bars, scores):
         ax.text(bar.get_x() + bar.get_width() / 2, value + max(scores) * 0.02, f"{value:.3f}", ha="center", va="bottom", fontsize=8, color=TEXT_DARK)
@@ -3499,7 +3439,7 @@ def export_tamm_interface_priority_bundle(
     ax.scatter(peak_diffs, avg_amax, color=TARGET_GREEN, s=50)
     for row, x, y in zip(pair_rows, peak_diffs, avg_amax):
         ax.text(x + 0.005, y + 0.0015, f"({int(row['dW_a_nm'])},{int(row['dW_b_nm'])})", fontsize=8, color=TEXT_DARK)
-    _style_axis(ax)
+    style_axis(ax)
     _set_axis_labels_cn(ax, title="峰处相位差与平均峰值吸收", xlabel="峰处相位差 (rad)", ylabel="平均 A_max")
 
     png_path = output_file(f"{prefix}.png")
@@ -3699,7 +3639,7 @@ def export_tamm_reflection_phase_screen_bundle(
         ax.set_xticklabels(pair_labels, rotation=30)
     else:
         ax.set_xticklabels(pair_labels, rotation=30, fontproperties=font)
-    _style_axis(ax)
+    style_axis(ax)
     _set_axis_labels_cn(ax, title="候选端结构对评分", xlabel="d_W 左/右 (nm)", ylabel="评分")
     for bar, value in zip(bars, scores):
         ax.text(bar.get_x() + bar.get_width() / 2, value + max(scores + [1e-9]) * 0.02, f"{value:.2f}", ha="center", va="bottom", fontsize=8, color=TEXT_DARK)
@@ -3711,7 +3651,7 @@ def export_tamm_reflection_phase_screen_bundle(
     ax.scatter(phase_err, min_r, c=[TARGET_GREEN if flag else MAIN_RED for flag in pass_mask], s=52, alpha=0.85)
     ax.axhline(float(result["criteria"]["min_reflectance"]), color=REF_BLUE, linestyle="--", linewidth=1.4, label="最低反射率阈值")
     ax.axvline(float(result["criteria"]["max_phase_error_rad"]), color=ERR_GOLD, linestyle="--", linewidth=1.4, label="相位误差阈值")
-    _style_axis(ax)
+    style_axis(ax)
     _set_axis_labels_cn(ax, title="高反射与 π 相位差判据", xlabel="相位误差 |π-Δφ| (rad)", ylabel="左右端最小反射率")
     ax.legend(prop=font, frameon=False, loc="best")
 
@@ -4000,7 +3940,7 @@ def export_tamm_interface_window_analysis(
             marker="o",
             label=f"{lam:.2f} μm",
         )
-    _style_axis(ax)
+    style_axis(ax)
     _set_axis_labels_cn(ax, title="热点中心位置", xlabel="左侧 d_W (nm)", ylabel="xc (μm)")
     ax.axhline(0.0, color="#8b95a5", linewidth=1.0, linestyle="--")
     ax.legend(prop=font, frameon=False, loc="best")
@@ -4015,7 +3955,7 @@ def export_tamm_interface_window_analysis(
             marker="o",
             label=f"{lam:.2f} μm",
         )
-    _style_axis(ax)
+    style_axis(ax)
     _set_axis_labels_cn(ax, title="界面相对背景增强", xlabel="左侧 d_W (nm)", ylabel="G_interface")
     ax.axhline(1.0, color="#8b95a5", linewidth=1.0, linestyle="--")
 
@@ -4029,7 +3969,7 @@ def export_tamm_interface_window_analysis(
             marker="o",
             label=f"{lam:.2f} μm",
         )
-    _style_axis(ax)
+    style_axis(ax)
     _set_axis_labels_cn(ax, title="界面局域占比", xlabel="左侧 d_W (nm)", ylabel="η_interface")
 
     ax = axes[1, 1]
@@ -4042,7 +3982,7 @@ def export_tamm_interface_window_analysis(
             marker="o",
             label=f"{lam:.2f} μm",
         )
-    _style_axis(ax)
+    style_axis(ax)
     _set_axis_labels_cn(ax, title="横向局域宽度", xlabel="左侧 d_W (nm)", ylabel="wx (μm)")
 
     png_path = output_file(f"{prefix}.png")
@@ -4173,7 +4113,7 @@ def export_tamm_interface_window_collection(
                 marker="o",
                 label=label,
             )
-        _style_axis(ax)
+        style_axis(ax)
         _set_axis_labels_cn(ax, title=title, xlabel="左侧 d_W (nm)", ylabel=ylabel)
         if metric == "xc_um":
             ax.axhline(0.0, color="#8b95a5", linewidth=1.0, linestyle="--")
@@ -4391,7 +4331,7 @@ def export_tamm_interface_window_scan_collection(
                 marker="o",
                 label=source_label,
             )
-        _style_axis(ax)
+        style_axis(ax)
         _set_axis_labels_cn(ax, title=title, xlabel="窗口配置", ylabel=ylabel)
         ax.set_xticks(x_positions)
         ax.set_xticklabels(ordered_config_labels, rotation=30, ha="right", fontproperties=font)

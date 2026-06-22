@@ -11,17 +11,25 @@ from .education import LayerSpec, multilayer_rt_spectrum, simulate_report_case
 from .io import load_spectrum_csv
 from .paths import output_file
 from .validation import build_standard_teaching_validation_cases, export_standard_teaching_validation_bundle
+from ._shared import (
+    MAIN_RED,
+    REF_BLUE,
+    ERR_GOLD,
+    TARGET_GREEN,
+    GRID_COLOR,
+    TEXT_DARK,
+    PANEL_BG,
+    apply_font_defaults,
+    style_axis,
+    default_case_quantity,
+    reference_kind_to_quantity,
+    pick_quantity,
+    series_for_quantity,
+    resample_pair,
+    error_metrics,
+)
 
-plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Noto Sans CJK SC", "Arial Unicode MS", "DejaVu Sans"]
-plt.rcParams["axes.unicode_minus"] = False
-
-MAIN_RED = "#c94f2d"
-REF_BLUE = "#1d4ed8"
-ERR_GOLD = "#b7791f"
-TARGET_GREEN = "#0f766e"
-GRID_COLOR = "#d7dde5"
-TEXT_DARK = "#223046"
-PANEL_BG = "#f7f8fb"
+apply_font_defaults()
 
 STABILITY_PROFILES: Dict[str, Dict[str, float]] = {
     "strict": {
@@ -56,76 +64,6 @@ SELECTOR_CN = {
     "low": "低折层",
     "cavity": "腔层",
 }
-
-
-def _style_axis(ax: plt.Axes) -> None:
-    ax.set_facecolor(PANEL_BG)
-    ax.grid(True, alpha=0.35, color=GRID_COLOR, linewidth=0.8)
-    for spine in ax.spines.values():
-        spine.set_color("#c9d2dc")
-    ax.tick_params(colors=TEXT_DARK)
-    ax.xaxis.label.set_color(TEXT_DARK)
-    ax.yaxis.label.set_color(TEXT_DARK)
-    ax.title.set_color(TEXT_DARK)
-
-
-def _default_case_quantity(case_id: str) -> str:
-    key = str(case_id).strip().lower()
-    if "fp_" in key:
-        return "T"
-    return "R"
-
-
-def _reference_kind_to_quantity(y_kind: str) -> str | None:
-    key = str(y_kind).strip().lower()
-    if "trans" in key:
-        return "T"
-    if "abs" in key:
-        return "A"
-    if "reflect" in key:
-        return "R"
-    return None
-
-
-def _pick_quantity(case_id: str, reference_kind: str, quantity: str | None) -> str:
-    if quantity is not None:
-        return str(quantity).strip().upper()
-    ref_quantity = _reference_kind_to_quantity(reference_kind)
-    if ref_quantity is not None:
-        return ref_quantity
-    return _default_case_quantity(case_id)
-
-
-def _series_for_quantity(result: Dict[str, Any], quantity: str) -> np.ndarray:
-    key = str(quantity).strip().upper()
-    if key not in {"R", "T", "A"}:
-        raise ValueError("quantity must be 'R', 'T', or 'A'.")
-    return np.asarray(result[key], dtype=float)
-
-
-def _resample_pair(
-    x1_nm: np.ndarray,
-    y1: np.ndarray,
-    x2_nm: np.ndarray,
-    y2: np.ndarray,
-    n_grid: int = 600,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    x_min = max(float(np.min(x1_nm)), float(np.min(x2_nm)))
-    x_max = min(float(np.max(x1_nm)), float(np.max(x2_nm)))
-    if x_max <= x_min:
-        raise ValueError("Theory and reference curves do not overlap in wavelength.")
-    grid = np.linspace(x_min, x_max, max(int(n_grid), 80))
-    return grid, np.interp(grid, x1_nm, y1), np.interp(grid, x2_nm, y2)
-
-
-def _error_metrics(theory: np.ndarray, reference: np.ndarray) -> Dict[str, float]:
-    diff = np.asarray(theory, dtype=float) - np.asarray(reference, dtype=float)
-    return {
-        "mae": float(np.mean(np.abs(diff))),
-        "rmse": float(np.sqrt(np.mean(diff ** 2))),
-        "max_abs_error": float(np.max(np.abs(diff))),
-        "mean_bias": float(np.mean(diff)),
-    }
 
 
 def _feature_mode(case_id: str, quantity: str) -> str:
@@ -284,9 +222,9 @@ def _compare_curve_to_theory(
     feature_window_nm: float | None = None,
 ) -> Dict[str, float]:
     theory_x = np.asarray(theory_result["wavelength_nm"], dtype=float)
-    theory_y = _series_for_quantity(theory_result, quantity)
-    grid_nm, theory_i, reference_i = _resample_pair(theory_x, theory_y, reference_x_nm, reference_y, n_grid=n_grid)
-    metrics = _error_metrics(theory_i, reference_i)
+    theory_y = series_for_quantity(theory_result, quantity)
+    grid_nm, theory_i, reference_i = resample_pair(theory_x, theory_y, reference_x_nm, reference_y, n_grid=n_grid)
+    metrics = error_metrics(theory_i, reference_i)
     lambda0_nm = float(theory_result["lambda0_nm"])
     theory_at_lambda0 = float(np.interp(lambda0_nm, grid_nm, theory_i))
     reference_at_lambda0 = float(np.interp(lambda0_nm, grid_nm, reference_i))
@@ -322,7 +260,7 @@ def analyze_reference_resolution(
     **case_overrides: Any,
 ) -> Dict[str, Any]:
     ref_spec = load_spectrum_csv(Path(reference_csv), y_selector=y_selector)
-    active_quantity = _pick_quantity(case_id, ref_spec.y_kind, quantity)
+    active_quantity = pick_quantity(case_id, ref_spec.y_kind, quantity)
     theory_result = simulate_report_case(case_id, **case_overrides)
 
     base_x = np.asarray(ref_spec.x_nm, dtype=float)
@@ -389,7 +327,7 @@ def analyze_reference_noise(
     **case_overrides: Any,
 ) -> Dict[str, Any]:
     ref_spec = load_spectrum_csv(Path(reference_csv), y_selector=y_selector)
-    active_quantity = _pick_quantity(case_id, ref_spec.y_kind, quantity)
+    active_quantity = pick_quantity(case_id, ref_spec.y_kind, quantity)
     theory_result = simulate_report_case(case_id, **case_overrides)
 
     base_x = np.asarray(ref_spec.x_nm, dtype=float)
@@ -480,16 +418,16 @@ def analyze_theoretical_angle_sensitivity(
     **case_overrides: Any,
 ) -> Dict[str, Any]:
     base_result = simulate_report_case(case_id, **case_overrides)
-    active_quantity = _default_case_quantity(case_id) if quantity is None else str(quantity).strip().upper()
+    active_quantity = default_case_quantity(case_id) if quantity is None else str(quantity).strip().upper()
     base_x = np.asarray(base_result["wavelength_nm"], dtype=float)
-    base_y = _series_for_quantity(base_result, active_quantity)
+    base_y = series_for_quantity(base_result, active_quantity)
     base_feature = _feature_summary(case_id, active_quantity, base_x, base_y)
 
     rows: List[Dict[str, float]] = []
     for theta_deg in theta_values_deg:
         perturbed = _rerun_from_result(base_result, theta_deg=float(theta_deg))
         perturbed_y = np.asarray(perturbed[active_quantity], dtype=float)
-        metrics = _error_metrics(base_y, perturbed_y)
+        metrics = error_metrics(base_y, perturbed_y)
         feature = _feature_summary(
             case_id,
             active_quantity,
@@ -533,9 +471,9 @@ def analyze_theoretical_thickness_sensitivity(
     **case_overrides: Any,
 ) -> Dict[str, Any]:
     base_result = simulate_report_case(case_id, **case_overrides)
-    active_quantity = _default_case_quantity(case_id) if quantity is None else str(quantity).strip().upper()
+    active_quantity = default_case_quantity(case_id) if quantity is None else str(quantity).strip().upper()
     base_x = np.asarray(base_result["wavelength_nm"], dtype=float)
-    base_y = _series_for_quantity(base_result, active_quantity)
+    base_y = series_for_quantity(base_result, active_quantity)
     base_layers = _layers_from_result(base_result)
     base_feature = _feature_summary(case_id, active_quantity, base_x, base_y)
 
@@ -544,7 +482,7 @@ def analyze_theoretical_thickness_sensitivity(
         perturbed_layers = _scaled_layers(base_layers, float(scale), selector=selector)
         perturbed = _rerun_from_result(base_result, layers=perturbed_layers)
         perturbed_y = np.asarray(perturbed[active_quantity], dtype=float)
-        metrics = _error_metrics(base_y, perturbed_y)
+        metrics = error_metrics(base_y, perturbed_y)
         feature = _feature_summary(
             case_id,
             active_quantity,
@@ -642,7 +580,7 @@ def export_resolution_analysis(
     feature_shift = np.asarray([float(row["feature_shift_nm"]) for row in step_rows], dtype=float)
 
     for ax in axes.ravel():
-        _style_axis(ax)
+        style_axis(ax)
 
     axes[0, 0].plot(x, mae, marker="o", color=MAIN_RED, linewidth=2.2)
     axes[0, 0].set_title("分辨率 vs 平均绝对误差")
@@ -744,7 +682,7 @@ def export_noise_analysis(
 
     fig, axes = plt.subplots(2, 2, figsize=(10.5, 7.2))
     for ax in axes.ravel():
-        _style_axis(ax)
+        style_axis(ax)
         ax.set_xscale("log")
 
     axes[0, 0].errorbar(sigma, mae_mean, yerr=mae_std, marker="o", color=MAIN_RED, linewidth=2.0, capsize=3)
@@ -831,7 +769,7 @@ def export_angle_sensitivity_analysis(
 
     fig, axes = plt.subplots(2, 2, figsize=(10.5, 7.2))
     for ax in axes.ravel():
-        _style_axis(ax)
+        style_axis(ax)
 
     axes[0, 0].plot(theta, mae, marker="o", color=MAIN_RED, linewidth=2.2)
     axes[0, 0].set_title("入射角误差 vs MAE")
@@ -921,7 +859,7 @@ def export_thickness_sensitivity_analysis(
 
     fig, axes = plt.subplots(2, 2, figsize=(10.5, 7.2))
     for ax in axes.ravel():
-        _style_axis(ax)
+        style_axis(ax)
         ax.axvline(0.0, color="#666666", linewidth=1.0, alpha=0.85)
 
     axes[0, 0].plot(x, mae, marker="o", color=MAIN_RED, linewidth=2.2)
@@ -1320,7 +1258,7 @@ def export_layerwise_thickness_summary(
 
     fig, axes = plt.subplots(1, 2, figsize=(12.5, 4.6))
     for ax in axes:
-        _style_axis(ax)
+        style_axis(ax)
 
     axes[0].bar(x, mae_vals, color=MAIN_RED, width=0.56)
     axes[0].set_xticks(x)
@@ -1600,7 +1538,7 @@ def export_refined_layer_tolerance_summary(
 
     fig, axes = plt.subplots(1, 2, figsize=(12.8, 4.8))
     for ax in axes:
-        _style_axis(ax)
+        style_axis(ax)
 
     axes[0].errorbar(
         centers,
@@ -1852,7 +1790,7 @@ def export_refined_angle_tolerance_summary(
 
     fig, axes = plt.subplots(1, 2, figsize=(12.8, 4.8))
     for ax in axes:
-        _style_axis(ax)
+        style_axis(ax)
 
     axes[0].barh(y, angle_vals, color=TARGET_GREEN, height=0.56)
     axes[0].set_yticks(y)
@@ -2160,7 +2098,7 @@ def export_overall_performance_table(
 
     fig, axes = plt.subplots(1, 3, figsize=(14.0, 4.6))
     for ax in axes:
-        _style_axis(ax)
+        style_axis(ax)
 
     axes[0].bar(x, mae_vals, color=MAIN_RED, width=0.56)
     axes[0].set_xticks(x)
@@ -2571,7 +2509,7 @@ def export_performance_conclusions(
 
     fig, axes = plt.subplots(1, 3, figsize=(14.0, 4.6))
     for ax in axes:
-        _style_axis(ax)
+        style_axis(ax)
 
     axes[0].bar(x, maes, color=MAIN_RED, width=0.56)
     axes[0].set_xticks(x)
@@ -2667,7 +2605,7 @@ def export_sensitivity_stability_summary(
 
     fig, axes = plt.subplots(1, 2, figsize=(11.0, 4.4))
     for ax in axes:
-        _style_axis(ax)
+        style_axis(ax)
 
     axes[0].bar(x, np.nan_to_num(np.asarray(resolution_vals, dtype=float), nan=0.0), color=REF_BLUE, width=0.56)
     axes[0].set_xticks(x)

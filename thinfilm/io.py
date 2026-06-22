@@ -23,13 +23,23 @@ class SpectrumData:
     all_column_labels: List[str]
 
 
-def _read_text_with_fallback(path: Path) -> str:
+@dataclass
+class LoadedCSV:
+    """Raw content of a CSV file read once, for multi-selector parsing."""
+    path: Path
+    text: str
+    encoding: str
+    comment_lines: List[str]
+
+
+def _read_text_with_fallback(path: Path) -> Tuple[str, str]:
+    """Read file as text, return (text, encoding_used)."""
     encodings = ["utf-8-sig", "utf-8", "gbk", "cp936", "ansi", "latin1"]
     last_error = None
     for enc in encodings:
         try:
             with open(path, "r", encoding=enc) as f:
-                return f.read()
+                return f.read(), enc
         except Exception as exc:  # pragma: no cover - fallback path
             last_error = exc
     raise UnicodeDecodeError(
@@ -41,15 +51,9 @@ def _read_text_with_fallback(path: Path) -> str:
     )
 
 
-def _read_csv_with_fallback(path: Path, **kwargs) -> pd.DataFrame:
-    encodings = ["utf-8-sig", "utf-8", "gbk", "cp936", "latin1"]
-    last_error = None
-    for enc in encodings:
-        try:
-            return pd.read_csv(path, encoding=enc, **kwargs)
-        except Exception as exc:  # pragma: no cover - fallback path
-            last_error = exc
-    raise ValueError(f"无法用常见编码读取 CSV: {path}. 最后错误: {last_error}")
+def _read_csv_with_encoding(path: Path, encoding: str, **kwargs) -> pd.DataFrame:
+    """Read CSV with a known encoding."""
+    return pd.read_csv(path, encoding=encoding, **kwargs)
 
 
 def _extract_comment_lines(lines: Sequence[str]) -> List[str]:
@@ -184,56 +188,80 @@ def _clean_numeric_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return df_num.dropna(how="all")
 
 
-def _load_standard_csv_with_headers(path: Path) -> Optional[Tuple[pd.DataFrame, List[str]]]:
-    try:
-        df = _read_csv_with_fallback(path)
-    except Exception:
-        return None
+def read_csv_once(path: Path) -> LoadedCSV:
+    """Read a CSV file once, detect encoding, extract comments.
 
-    if df.shape[1] < 2:
-        return None
-
-    df_num = _clean_numeric_dataframe(df)
-    if df_num.shape[1] < 2 or len(df_num) < 2:
-        return None
-
-    labels = [str(c).strip() for c in df.columns]
-    return df_num.reset_index(drop=True), labels
-
-
-def _load_comsol_numeric_table(path: Path, comment_lines: Sequence[str]) -> Tuple[pd.DataFrame, List[str]]:
-    df = _read_csv_with_fallback(path, comment="%", header=None)
-    df_num = _clean_numeric_dataframe(df)
-    if df_num.shape[1] < 2 or len(df_num) < 2:
-        raise ValueError(f"CSV 至少需要两列有效数值数据: {path}")
-
-    header_candidates = _extract_header_candidates_from_comments(comment_lines)
-    labels: List[str] = []
-    for i in range(df_num.shape[1]):
-        if i < len(header_candidates):
-            labels.append(header_candidates[i])
-        else:
-            labels.append(f"col_{i}")
-    return df_num.reset_index(drop=True), labels
-
-
-def load_spectrum_csv(
-    path: Path,
-    y_selector: Optional[Union[int, str]] = None,
-    x_selector: Union[int, str] = 0,
-) -> SpectrumData:
+    Returns a LoadedCSV object that can be parsed multiple times with
+    different column selectors without re-reading from disk.
+    """
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"文件不存在: {path}")
+    text, encoding = _read_text_with_fallback(path)
+    comment_lines = _extract_comment_lines(text.splitlines())
+    return LoadedCSV(path=path, text=text, encoding=encoding, comment_lines=comment_lines)
 
-    text_lines = _read_text_with_fallback(path).splitlines()
-    comment_lines = _extract_comment_lines(text_lines)
-    standard = _load_standard_csv_with_headers(path)
-    if standard is not None:
-        data_table, labels = standard
-    else:
-        data_table, labels = _load_comsol_numeric_table(path, comment_lines)
 
+def parse_loaded_csv(
+    loaded: LoadedCSV,
+    y_selector: Optional[Union[int, str]] = None,
+    x_selector: Union[int, str] = 0,
+) -> SpectrumData:
+    """Parse a previously loaded CSV into SpectrumData with given selectors.
+
+    Does NOT re-read the file from disk.
+    """
+    import io as _io
+
+    # Try standard CSV (with header) first
+    try:
+        df = pd.read_csv(
+            _io.StringIO(loaded.text),
+            encoding=loaded.encoding,
+        )
+        if df.shape[1] >= 2:
+            df_num = _clean_numeric_dataframe(df)
+            if df_num.shape[1] >= 2 and len(df_num) >= 2:
+                labels = [str(c).strip() for c in df.columns]
+                data_table = df_num.reset_index(drop=True)
+                return _build_spectrum_data(loaded.path, data_table, labels, loaded.comment_lines, y_selector, x_selector)
+    except Exception:
+        pass
+
+    # Fallback: COMSOL-style numeric table with comment headers
+    try:
+        df = pd.read_csv(
+            _io.StringIO(loaded.text),
+            encoding=loaded.encoding,
+            comment="%",
+            header=None,
+        )
+        df_num = _clean_numeric_dataframe(df)
+        if df_num.shape[1] < 2 or len(df_num) < 2:
+            raise ValueError(f"CSV 至少需要两列有效数值数据: {loaded.path}")
+
+        header_candidates = _extract_header_candidates_from_comments(loaded.comment_lines)
+        labels: List[str] = []
+        for i in range(df_num.shape[1]):
+            if i < len(header_candidates):
+                labels.append(header_candidates[i])
+            else:
+                labels.append(f"col_{i}")
+        data_table = df_num.reset_index(drop=True)
+        return _build_spectrum_data(loaded.path, data_table, labels, loaded.comment_lines, y_selector, x_selector)
+    except Exception as exc:
+        raise ValueError(f"无法解析 CSV: {loaded.path}. {exc}")
+
+
+def _build_spectrum_data(
+    path: Path,
+    data_table: pd.DataFrame,
+    labels: List[str],
+    comment_lines: List[str],
+    y_selector: Optional[Union[int, str]],
+    x_selector: Union[int, str],
+) -> SpectrumData:
+    """Build SpectrumData from parsed dataframe and labels."""
     x_idx = _pick_column_index(labels, x_selector, default_index=0)
     y_idx = _pick_column_index(labels, y_selector, default_index=1)
 
@@ -267,6 +295,20 @@ def load_spectrum_csv(
         comment_lines=list(comment_lines),
         all_column_labels=list(labels),
     )
+
+
+def load_spectrum_csv(
+    path: Path,
+    y_selector: Optional[Union[int, str]] = None,
+    x_selector: Union[int, str] = 0,
+) -> SpectrumData:
+    """Load a spectrum CSV file (single-read path).
+
+    For repeated parsing of the same file with different selectors,
+    use read_csv_once() + parse_loaded_csv() instead.
+    """
+    loaded = read_csv_once(path)
+    return parse_loaded_csv(loaded, y_selector=y_selector, x_selector=x_selector)
 
 
 def read_reflectance_csv(
