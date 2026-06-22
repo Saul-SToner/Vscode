@@ -1087,6 +1087,60 @@ def multilayer_rt_spectrum(
     }
 
 
+def reflection_phase_radians(result: Dict[str, Any], *, unwrap: bool = True) -> np.ndarray:
+    """Extract reflection phase arg(r) from a TMM result dict.
+
+    Parameters
+    ----------
+    result : dict
+        Output of ``multilayer_rt_spectrum`` (must contain ``r_complex``).
+    unwrap : bool
+        If True, apply ``np.unwrap`` to remove 2π jumps for a continuous
+        phase curve.
+
+    Returns
+    -------
+    np.ndarray
+        Phase in radians, same shape as ``result["wavelength_nm"]``.
+    """
+    phase = np.angle(np.asarray(result["r_complex"], dtype=complex))
+    if unwrap:
+        phase = np.unwrap(phase)
+    return phase
+
+
+def reflection_phase_degrees(result: Dict[str, Any], *, unwrap: bool = True) -> np.ndarray:
+    """Extract reflection phase in degrees."""
+    return np.degrees(reflection_phase_radians(result, unwrap=unwrap))
+
+
+def phase_difference(
+    result_left: Dict[str, Any],
+    result_right: Dict[str, Any],
+    *,
+    unwrap: bool = True,
+) -> np.ndarray:
+    """Compute wrapped phase difference Δφ = arg(r_left) - arg(r_right).
+
+    Parameters
+    ----------
+    result_left, result_right : dict
+        TMM result dicts with matching wavelength grids.
+    unwrap : bool
+        If True, unwrap each phase before differencing.
+
+    Returns
+    -------
+    np.ndarray
+        Phase difference in radians, range (−π, π] after wrapping.
+    """
+    phi_left = reflection_phase_radians(result_left, unwrap=unwrap)
+    phi_right = reflection_phase_radians(result_right, unwrap=unwrap)
+    delta = phi_left - phi_right
+    # Wrap to (−π, π]
+    return (delta + np.pi) % (2.0 * np.pi) - np.pi
+
+
 def _material_or_constant_index(
     role: str,
     wavelength_nm: float,

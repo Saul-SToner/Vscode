@@ -56,9 +56,9 @@ from .api import (
 )
 from .education import (
     LayerSpec,
+    ReportDesignParams,
     REPORT_CHAPTER2_CASES,
     REPORT_COMPARISON_FIGURES,
-    ReportDesignParams,
     _multilayer_rt_spectrum_scalar,
     build_double_ar_layers,
     build_fp_double_halfwave_layers,
@@ -81,6 +81,9 @@ from .education import (
     list_report_chapter2_cases,
     list_report_comparison_figures_catalog,
     multilayer_rt_spectrum,
+    phase_difference,
+    reflection_phase_degrees,
+    reflection_phase_radians,
     simulate_pdrc_multilayer_cooling,
     simulate_report_case,
     simulate_report_chapter2_suite,
