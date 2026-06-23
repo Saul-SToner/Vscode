@@ -12,6 +12,8 @@ from typing import Any, Dict
 import matplotlib.pyplot as plt
 import numpy as np
 
+from .plotting import style_axis as _plotting_style_axis
+
 
 # ---------------------------------------------------------------------------
 # Color constants (report-style palette)
@@ -28,6 +30,12 @@ PANEL_BG = "#f7f8fb"
 # Aliases for modules that used different names for the same values
 REF_BLUE = TRANS_BLUE
 ERR_GOLD = ABS_GOLD
+
+# ---------------------------------------------------------------------------
+# DPI constant
+# ---------------------------------------------------------------------------
+
+DEFAULT_FIGURE_DPI = 180
 
 
 # ---------------------------------------------------------------------------
@@ -51,16 +59,12 @@ def apply_font_defaults() -> None:
     plt.rcParams["axes.unicode_minus"] = False
 
 
-def style_axis(ax: plt.Axes) -> None:
-    """Apply report-style axis formatting."""
-    ax.set_facecolor(PANEL_BG)
-    ax.grid(True, alpha=0.35, color=GRID_COLOR, linewidth=0.8)
-    for spine in ax.spines.values():
-        spine.set_color("#c9d2dc")
-    ax.tick_params(colors=TEXT_DARK)
-    ax.xaxis.label.set_color(TEXT_DARK)
-    ax.yaxis.label.set_color(TEXT_DARK)
-    ax.title.set_color(TEXT_DARK)
+def style_axis(ax: plt.Axes, *, grid: bool = True) -> None:
+    """Apply report-style axis formatting.
+
+    This is the canonical implementation, delegating to plotting.py.
+    """
+    _plotting_style_axis(ax, grid=grid)
 
 
 # ---------------------------------------------------------------------------
