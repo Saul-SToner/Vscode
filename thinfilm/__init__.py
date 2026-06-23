@@ -178,6 +178,21 @@ from .validation import (
     summarize_absorbing_surface_roughness,
 )
 
+# Plotly charts (optional dependency)
+try:
+    from .plotly_charts import (
+        plot_rta_spectrum,
+        plot_layer_structure,
+        plot_angle_wavelength_surface,
+        plot_field_distribution,
+        plot_convergence,
+        plot_design_comparison,
+        plot_pdrc_dashboard,
+    )
+    _PLOTLY_AVAILABLE = True
+except ImportError:
+    _PLOTLY_AVAILABLE = False
+
 __all__ = [
     "LayerSpec",
     "REPORT_CHAPTER2_CASES",
@@ -342,4 +357,12 @@ __all__ = [
     "summarize_sensitivity_stability",
     "summarize_refined_angle_tolerance",
     "summarize_refined_layer_tolerance",
+    # Plotly charts
+    "plot_rta_spectrum",
+    "plot_layer_structure",
+    "plot_angle_wavelength_surface",
+    "plot_field_distribution",
+    "plot_convergence",
+    "plot_design_comparison",
+    "plot_pdrc_dashboard",
 ]
