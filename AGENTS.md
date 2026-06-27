@@ -113,12 +113,20 @@ tests/
   test_guided_grating.py     光栅波导模块（55 用例）
   test_tamm_phase.py         Tamm 反射相位计算（14 用例）
   test_pdrc.py               PDRC surrogate + 真实材料仿真（18 用例）
+  test_rcwa.py               RCWA 求解器（19 用例）
+  test_application_cases.py  工程应用案例（31 用例）
 ```
 
 性能基线：
 
 ```bash
 python benchmarks/performance_baseline.py
+```
+
+RCWA 物理审计：
+
+```bash
+python benchmarks/rcwa_audit.py
 ```
 
 ## 9. 说明
